@@ -5,7 +5,9 @@ set(CMAKE_C_STANDARD 11)
 # Static link libries
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
 
-#SET(CMAKE_C_FLAGS "-Wall -pedantic -std=c11 ${CMAKE_C_FLAGS}")
+# Turn on some compiler flags to detect programming errors
+# The following line of code can be comented out while debuging the code
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
 set(SOURCES
     cmdhfmfhard.c
@@ -37,8 +39,5 @@ set(SOURCES
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-
-# Add compiler flags such as -Wall
-#target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Werror)
 
 target_link_libraries(${PROJECT_NAME} liblzma.lib)

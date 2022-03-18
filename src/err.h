@@ -14,6 +14,4 @@
     exit (code); \
   } while (0)
 
-#define err errx
-
 #endif /* !_ERR_H_ */

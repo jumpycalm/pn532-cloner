@@ -194,8 +194,6 @@ uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, i
     dwTotalBytesReceived += dwBytesReceived;
 
     if (!res) {
-      DWORD err = GetLastError();
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "ReadFile error: %lu", err);
       return NFC_EIO;
     } else if (dwBytesReceived == 0) {
       return NFC_ETIMEOUT;
