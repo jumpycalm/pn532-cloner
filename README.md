@@ -10,7 +10,7 @@ Only PN532 via UART to USB interface is supported. The PN532 boards are widely a
 
 # Supported operating system
 
-Only Windows and Mac (under development) are supported. There's no plan to support Linux. For Linux applications, you can use [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) directly.
+Only Windows and Mac (under development) are supported. There's no plan to support Linux. For Linux applications, you can use [libnfc](https://github.com/nfc-tools/libnfc) directly.
 
 # Supported RFID tags
 ## Read
@@ -22,7 +22,7 @@ Gen 2 and Gen 3 Magic MIFARE Classic, Magic MIFARE Ultralight (under development
 
 ## Windows
 
-Only MSYS2 is supported. Install MSYS2. Inside the MinGW-w64 terminal, clone this project first:
+Only MSYS2 environment is supported. Install MSYS2. Open the MinGW-w64 terminal, clone this project first:
 ```
 git clone https://github.com/jumpycalm/pn532-cloner.git
 ```
