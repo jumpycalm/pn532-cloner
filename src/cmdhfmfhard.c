@@ -27,7 +27,7 @@
 #include "nfc.h"
 #ifdef _MSC_VER
 #include <direct.h>
-#include "windows.h"
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif

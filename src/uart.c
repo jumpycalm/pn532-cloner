@@ -46,7 +46,7 @@
 #define LOG_CATEGORY "libnfc.bus.uart_win32"
 
 // Handle platform specific includes
-#include "windows.h"
+#include <windows.h>
 #define delay_ms( X ) Sleep( X )
 
 struct serial_port_windows {
