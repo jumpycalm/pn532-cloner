@@ -42,7 +42,7 @@ To be supported soon
 
 # License
 
-Because source code from [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project is used and [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project under GPL-2.0 License. This project must be under GPL license to comply with the [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project.
+Because source code from [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project is used. [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project under GPL-2.0 License. This project must be under GPL license to comply with the [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project.
 
 # Support this project:
 
@@ -52,3 +52,5 @@ Buy a PN532 board with a USB-C port from me
 
 Buy the blank magic tags from me
 
+# Proprietary Notes
+FeliCa is a registered trademark of the Sony Corporation. MIFARE is a trademark of NXP Semiconductors. Jewel Topaz is a trademark of Innovision Research & Technology. All other trademarks are the property of their respective owners.
