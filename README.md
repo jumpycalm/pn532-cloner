@@ -30,6 +30,7 @@ Navigate into the project folder, create a new folder called `build`, go to that
 ```
 cd pn532-cloner
 mkdir build
+cd build
 cmake -G "MinGW Makefiles" ../src
 mingw32-make
 ```
