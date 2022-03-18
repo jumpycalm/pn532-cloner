@@ -1,12 +1,12 @@
 # What is this project?
-This project is based on the famous [libnfc](https://github.com/nfc-tools/libnfc) project as the backend to drive the PN532 chip. Much of the higher-level application code is based on the [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project.
-The aim of this project is to make reading/writing a MIFARE Classic, MIFARE Ultralight, as well as an NTAG, tag easier on Windows and Mac.
+This project is based on the famous [libnfc](https://github.com/nfc-tools/libnfc) project as the backend to drive the NXP PN532 chip. Much of the higher-level application code is based on the [mfoc-hardnested](https://github.com/nfc-tools/mfoc-hardnested) project.
+The aim of this project is to make reading/writing MIFARE Classic, MIFARE Ultralight, as well as an NTAG tags easier on Windows and Mac.
 I only plan to support PN532 via a UART to USB interface as this is the most cost-effective way to read/write a tag. 
 The compiled application has only one binary file which makes the application portable.
 
 # Supported hardware
 
-Only PN532 via UART to USB interface is supported. The PN532 boards are widely available from all the major online retailers. If you buy one of the boards without a USB port, you will need to buy a UART to USB cable as well (also available via all major online retailers). I also have the PN532 boards with a CH340 UART to USB interface built-in for sale. The PN532 boards I carry have USB-C ports on them. Please note, the widely available ACR122 reader is not supported due to ACR122 does not use UART to USB interface.
+Only NXP PN532 via UART to USB interface is supported. The PN532 boards are widely available from all the major online retailers. If you buy one of the boards without a USB port, you will need to buy a UART to USB cable as well (also available via all major online retailers). I also have the PN532 boards with a CH340 UART to USB interface built-in for sale. The PN532 boards I carry have USB-C ports on them. Please note, the widely available ACR122 reader is not supported due to ACR122 does not use UART to USB interface.
 
 # Supported operating system
 
