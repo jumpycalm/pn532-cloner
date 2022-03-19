@@ -240,31 +240,32 @@ uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
 
 BOOL is_port_available(int nPort)
 {
-  TCHAR szPort[15];
-  COMMCONFIG cc;
-  DWORD dwCCSize;
-
-  sprintf(szPort, "COM%d", nPort);
-
-  // Check if this port is available
-  dwCCSize = sizeof(cc);
-  return GetDefaultCommConfig(szPort, &cc, &dwCCSize);
+  HANDLE serial_handle;
+  char port_name[20] = {0};
+  sprintf(port_name, "\\\\.\\com%u", nPort);
+  serial_handle = CreateFileA(port_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+  if (serial_handle != INVALID_HANDLE_VALUE) {
+    CloseHandle(serial_handle);
+    return true;
+  } else
+    return false;
 }
 
 // Path to the serial port is OS-dependant.
 // Try to guess what we should use.
-#define MAX_SERIAL_PORT_WIN 255
-char **
-uart_list_ports(void)
+// Although the Max port number on Windows is 255, in most of the cases, port number rarely goes above 100
+//#define MAX_SERIAL_PORT_WIN 255
+#define MAX_SEARCH_SERIAL_PORT 100
+char ** uart_list_ports(void)
 {
-  char **availablePorts = malloc((1 + MAX_SERIAL_PORT_WIN) * sizeof(char *));
+  char **availablePorts = malloc((1 + MAX_SEARCH_SERIAL_PORT) * sizeof(char *));
   if (!availablePorts) {
     perror("malloc");
     return availablePorts;
   }
   int curIndex = 0;
   int i;
-  for (i = 1; i <= MAX_SERIAL_PORT_WIN; i++) {
+  for (i = 1; i <= MAX_SEARCH_SERIAL_PORT; i++) {
     if (is_port_available(i)) {
       availablePorts[curIndex] = (char *)malloc(10);
       if (!availablePorts[curIndex]) {

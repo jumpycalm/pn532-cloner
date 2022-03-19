@@ -37,8 +37,6 @@
 #include "config.h"
 #endif
 
-#include "conf.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
@@ -76,8 +74,8 @@ nfc_context *nfc_context_new(void)
   }
 
   // Set default context values
-  res->allow_autoscan = false;
-  res->allow_intrusive_scan = false;
+  res->allow_autoscan = true;
+  res->allow_intrusive_scan = true;
 #ifdef DEBUG
   res->log_level = 3;
 #else
@@ -91,8 +89,6 @@ nfc_context *nfc_context_new(void)
     res->user_defined_devices[i].optional = false;
   }
   res->user_defined_device_count = 0;
-
-  conf_load(res);
 
   // Initialize log before use it...
   log_init(res);

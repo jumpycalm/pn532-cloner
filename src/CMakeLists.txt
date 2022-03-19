@@ -11,7 +11,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
 set(SOURCES
     cmdhfmfhard.c
-    conf.c
     crapto1.c
     crypto1.c
     getopt.c
