@@ -1714,12 +1714,12 @@ static void set_test_state(uint8_t byte) {
 }
 
 
-int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType, bool hard_low_memory) {
+int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType) {
     
     targetBLOCK = trgBlockNo;
     targetKEY = trgKeyType;
     
-    hard_LOW_MEM = hard_low_memory;
+    hard_LOW_MEM = false; // TODO: Investigate should we enable hard_LOW_MEM
     
     char progress_text[80];
     cuid = t.authuid;

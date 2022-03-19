@@ -117,9 +117,26 @@ void usage(FILE *stream, uint8_t errnr)
   exit(errnr);
 }
 
-int main(int argc, char *const argv[])
+static void pn532_cloner_usage()
 {
-  int ch, i, k, n, j, m;
+  printf("\n");
+  printf("###################################################################################\n");
+  printf("Usage:\n");
+  printf("R             - (R)ead a tag\n");
+  printf("W             - (W)rite to a magic tag using the data from the most recent read tag\n");
+  //printf("W <File name> - (W)rite to a magic tag using the data from a saved mfd file\n");
+  printf("C             - (C)lean/Restore a magic tag to the factory default\n");
+  printf("\n");
+  printf("Example:\n");
+  printf("Enter \"R\" to read a tag\n");
+  printf("Enter \"W\" to write to a magic tag using the data from the tag you just read\n");
+  printf("###################################################################################\n");
+  printf("\n");
+}
+
+static bool read_mfc()
+{
+  int i, k, n, j, m;
   int key, block;
   int succeed = 1;
 
@@ -134,7 +151,7 @@ int main(int argc, char *const argv[])
   bool skip = false;
   bool force_hardnested = false;
   // Next default key specified as option (-k)
-  uint8_t *defKeys = NULL, *p;
+  uint8_t *defKeys = NULL;
   size_t defKeys_len = 0;
 
   // Array with default Mifare Classic keys
@@ -160,129 +177,24 @@ int main(int argc, char *const argv[])
 
   mifare_cmd mc;
   FILE *pfDump = NULL;
-  
-  // Hardnested low memory
-  bool hard_low_memory = false;
-  
-  //File pointers for the keyfile 
-  FILE * fp;
-  char line[20];
 
   bool use_default_key=true;
-  //Regexp declarations
-  static const char *regex = "([0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])";
-  struct slre_cap caps[2];  
-
-  // Parse command line arguments
-  while ((ch = getopt(argc, argv, "hCZFP:T:O:k:f:")) != -1) {
-    switch (ch) {
-      case 'C':
-        use_default_key=false;
-        break;
-      case 'P':
-        // Number of probes
-        if (!(probes = atoi(optarg)) || probes < 1) {
-          ERR("The number of probes must be a positive number");
-          exit(EXIT_FAILURE);
-        }
-        fprintf(stdout, "Number of probes: %d\n", probes);
-        break;
-      case 'T': {
-        int res;
-        // Nonce tolerance range
-        if (((res = atoi(optarg)) < 0)) {
-          ERR("The nonce distances range must be a zero or a positive number");
-          exit(EXIT_FAILURE);
-        }
-        d.tolerance = (uint32_t)res;
-        fprintf(stdout, "Tolerance number: %d\n", probes);
-      }
-      break;
-    case 'f':
-    if (!(fp = fopen(optarg, "r"))) {
-                fprintf(stderr, "Cannot open keyfile: %s, exiting\n", optarg);
-                exit(EXIT_FAILURE);
-    }
-        while ((fgets(line, sizeof(line), fp)) != NULL) {
-            int i, j = 0, str_len = strlen(line);
-            while (j < str_len &&
-                   (i = slre_match(regex, line + j, str_len - j, caps, 500, 1)) > 0) {
-                //We've found a key, let's add it to the structure.
-                p = realloc(defKeys, defKeys_len + 6);
-                if (!p) {
-                  ERR("Cannot allocate memory for defKeys");
-                  exit(EXIT_FAILURE);
-                }                
-                defKeys = p;
-                memset(defKeys + defKeys_len, 0, 6);
-                num_to_bytes(strtoll(caps[0].ptr, NULL, 16), 6, defKeys + defKeys_len);
-                fprintf(stdout, "The custom key 0x%.*s has been added to the default keys\n", caps[0].len, caps[0].ptr);
-                defKeys_len = defKeys_len + 6;
-                
-              j += i;
-            }
-        }
-      break;
-      case 'k':
-        // Add this key to the default keys
-        p = realloc(defKeys, defKeys_len + 6);
-        if (!p) {
-          ERR("Cannot allocate memory for defKeys");
-          exit(EXIT_FAILURE);
-        }
-        defKeys = p;
-        memset(defKeys + defKeys_len, 0, 6);
-        num_to_bytes(strtoll(optarg, NULL, 16), 6, defKeys + defKeys_len);
-        fprintf(stdout, "The custom key 0x%012llx has been added to the default keys\n", bytes_to_num(defKeys + defKeys_len, 6));
-        defKeys_len = defKeys_len + 6;
-
-        break;
-      case 'F':
-        //force hardnested
-        force_hardnested = true;
-        break;
-      case 'Z':
-        //Reduce memory usage
-        hard_low_memory = true;
-        break;
-      case 'O':
-        // File output
-        if (!(pfDump = fopen(optarg, "wb"))) {
-          fprintf(stderr, "Cannot open: %s, exiting\n", optarg);
-          exit(EXIT_FAILURE);
-        }
-        // fprintf(stdout, "Output file: %s\n", optarg);
-        break;
-      case 'h':
-        usage(stdout, 0);
-        break;
-      default:
-        usage(stderr, 1);
-        break;
-    }
-  }
-
-  // Print banner and version
-  printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
-
-  // Initialize reader/tag structures
-  mf_init(&r);
 
   mf_configure(r.pdi);
 
   int tag_count;
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
-    goto error;
+    return false;
   } else if (tag_count == 0) {
     ERR("No tag found.");
-    goto error;
+    return false;
   }
 
   // Test if a compatible MIFARE tag is used
   if (((t.nt.nti.nai.btSak & 0x08) == 0) && (t.nt.nti.nai.btSak != 0x01)) {
     ERR("only Mifare Classic is supported");
-    goto error;
+    return false;
   }
 
   t.authuid = (uint32_t) bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
@@ -317,21 +229,21 @@ int main(int argc, char *const argv[])
       break;
     default:
       ERR("Cannot determine card type from SAK");
-      goto error;
+      return false;
   }
 
   t.sectors = (void *) calloc(t.num_sectors, sizeof(sector));
   if (t.sectors == NULL) {
     ERR("Cannot allocate memory for t.sectors");
-    goto error;
+    return false;
   }
   if ((pk = (void *) malloc(sizeof(pKeys))) == NULL) {
     ERR("Cannot allocate memory for pk");
-    goto error;
+    return false;
   }
   if ((bk = (void *) malloc(sizeof(bKeys))) == NULL) {
     ERR("Cannot allocate memory for bk");
-    goto error;
+    return false;
   } else {
     bk->brokenKeys = NULL;
     bk->size = 0;
@@ -340,7 +252,7 @@ int main(int argc, char *const argv[])
   d.distances = (void *) calloc(d.num_distances, sizeof(uint32_t));
   if (d.distances == NULL) {
     ERR("Cannot allocate memory for t.distances");
-    goto error;
+    return false;
   }
 
   // Initialize t.sectors, keys are not known yet
@@ -420,7 +332,7 @@ int main(int argc, char *const argv[])
           if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, mc, block, &mp)) < 0) {
             if (res != NFC_EMFCAUTHFAIL) {
               nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              goto error;
+              return false;
             }
             mf_anticollision(t, r);
           } else {
@@ -452,7 +364,7 @@ int main(int argc, char *const argv[])
               } else {
                   if (res != NFC_ERFTRANS) {
                     nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                    goto error;
+                    return false;
                   }
                 mf_anticollision(t, r);
               }
@@ -466,7 +378,7 @@ int main(int argc, char *const argv[])
           if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, mc, block, &mp)) < 0) {
             if (res != NFC_EMFCAUTHFAIL) {
               nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              goto error;
+              return false;
             }
             mf_anticollision(t, r);
             // No success, try next block
@@ -540,7 +452,7 @@ int main(int argc, char *const argv[])
           if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, mc, t.sectors[j].trailer, &mp)) < 0) {
             if (res != NFC_EMFCAUTHFAIL) {
               nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              goto error;
+              return false;
             }
             mf_anticollision(t, r);
           } else {
@@ -570,7 +482,7 @@ int main(int argc, char *const argv[])
                 } else {
                     if (res != NFC_ERFTRANS) {
                       nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                      goto error;
+                      return false;
                     }
                   mf_anticollision(t, r);
                 }
@@ -600,7 +512,7 @@ int main(int argc, char *const argv[])
             uint8_t *key = (t.sectors[e_sector].foundKeyA ? t.sectors[e_sector].KeyA : t.sectors[e_sector].KeyB);;
             uint8_t trgBlockNo = sector_to_block(j); //block
             uint8_t trgKeyType = (dumpKeysA ? MC_AUTH_A : MC_AUTH_B);
-            mfnestedhard(blockNo, keyType, key, trgBlockNo, trgKeyType, hard_low_memory);
+            mfnestedhard(blockNo, keyType, key, trgBlockNo, trgKeyType);
             did_hardnested=true;
             goto check_keys;
         } else {
@@ -644,7 +556,7 @@ int main(int argc, char *const argv[])
                   if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, mc, t.sectors[j].trailer, &mp)) < 0) {
                     if (res != NFC_EMFCAUTHFAIL) {
                       nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                      goto error;
+                      return false;
                     }
                     mf_anticollision(t, r);
                   } else {
@@ -683,7 +595,7 @@ int main(int argc, char *const argv[])
                       } else {
                           if (res != NFC_ERFTRANS) {
                             nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                            goto error;
+                            return false;
                           }
                         mf_anticollision(t, r);
                       }
@@ -703,7 +615,7 @@ int main(int argc, char *const argv[])
         // We haven't found any key, exiting
         if ((dumpKeysA && !t.sectors[j].foundKeyA) || (!dumpKeysA && !t.sectors[j].foundKeyB)) {
           ERR("No success, maybe you should increase the probes");
-          goto error;
+          return false;
         }
       }
     }
@@ -733,7 +645,7 @@ int main(int argc, char *const argv[])
       if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, block, &mp)) < 0) {
         if (res != NFC_EMFCAUTHFAIL) {
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-          goto error;
+          return false;
         }
         mf_configure(r.pdi);
         mf_anticollision(t, r);
@@ -748,7 +660,7 @@ int main(int argc, char *const argv[])
           // Error, now try read() with B key
           if (res != NFC_ERFTRANS) {
             nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-            goto error;
+            return false;
           }
           mf_configure(r.pdi);
           mf_anticollision(t, r);
@@ -756,7 +668,7 @@ int main(int argc, char *const argv[])
           if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, block, &mp)) < 0) {
             if (res != NFC_EMFCAUTHFAIL) {
               nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              goto error;
+              return false;
             }
             mf_configure(r.pdi);
             mf_anticollision(t, r);
@@ -770,7 +682,7 @@ int main(int argc, char *const argv[])
             } else {
               if (res != NFC_ERFTRANS) {
                 nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                goto error;
+                return false;
               }
               mf_configure(r.pdi);
               mf_anticollision(t, r);
@@ -788,13 +700,20 @@ int main(int argc, char *const argv[])
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
     }
 
+    // TODO: Pick up a file name based on the tag's type and UID
+    // For now, name all the file to MFC.bin
+    if (!(pfDump = fopen("MFC.bin", "wb"))) {
+      fprintf(stderr, "Cannot open: %s, exiting\n", optarg);
+      return false;
+    }
+
     // Finally save all keys + data to file
     if (pfDump) {
       uint16_t dump_size = (t.num_blocks + 1) * 16;
       if (fwrite(&mtDump, 1, dump_size, pfDump) != dump_size) {
         fprintf(stdout, "Error, cannot write dump\n");
         fclose(pfDump);
-        goto error;
+        return false;
       }
       fclose(pfDump);
     }
@@ -806,30 +725,70 @@ int main(int argc, char *const argv[])
   // Reset the "advanced" configuration to normal
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
-
-  // Disconnect device and exit
-  nfc_close(r.pdi);
-  nfc_exit(context);
-  exit(EXIT_SUCCESS);
-error:
-  nfc_close(r.pdi);
-  nfc_exit(context);
-  exit(EXIT_FAILURE);
+  return true;
 }
 
-void mf_init(mfreader *r)
+static bool write_mfc()
+{
+  printf("Write function coming soon...\n");
+  return true;
+}
+
+static bool clean_mfc()
+{
+  printf("Clean function coming soon...\n");
+  return true;
+}
+
+int main(int argc, char *const argv[])
+{
+  char line[20]= { 0 };
+
+  // Print banner and version
+  printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
+  printf("https://github.com/jumpycalm/pn532-cloner\n");
+
+  while (true) {
+    // Before performing any task, alway call mf_init() to check if the reader is connected
+    if (!mf_init(&r)) {
+      getchar();
+      continue;
+    }
+
+    pn532_cloner_usage();
+    
+    fgets(line, sizeof(line), stdin);
+    if (strlen(line) > 2)
+      printf("Advanced options will be supported in the future software release\n");
+    else if (line[0] == 'r' || line[0] == 'R')
+      read_mfc();
+    else if (line[0] == 'w' || line[0] == 'W')
+      write_mfc();
+    else if (line[0] == 'c' || line[0] == 'C')
+      clean_mfc();
+
+    nfc_close(r.pdi);
+    nfc_exit(context);
+  }
+  return 0;
+}
+
+bool mf_init(mfreader *r)
 {
   // Connect to the first NFC device
   nfc_init(&context);
   if (context == NULL) {
     ERR("Unable to init libnfc (malloc)");
-    exit(EXIT_FAILURE);
+    return false;
   }
   r->pdi = nfc_open(context, NULL);
   if (!r->pdi) {
-    printf("No NFC device found.\n");
-    exit(EXIT_FAILURE);
+    printf("Unable to find NXP PN532 reader.\n");
+    printf("Please ensure the reader is connected to the PC and the reader is detected as a serial port.\n");
+    printf("Press any key to retry...\n");
+    return false;
   }
+  return true;
 }
 
 void mf_configure(nfc_device *pdi)

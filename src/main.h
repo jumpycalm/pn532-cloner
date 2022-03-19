@@ -92,7 +92,7 @@ extern mfreader    r;
 
 
 void usage(FILE *stream, uint8_t errnr);
-void mf_init(mfreader *r);
+bool mf_init(mfreader *r);
 void mf_configure(nfc_device *pdi);
 void mf_select_tag(nfc_device *pdi, nfc_target *pnt);
 int trailer_block(uint32_t block);
