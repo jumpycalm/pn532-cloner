@@ -62,6 +62,8 @@
 
 #define MAX_FRAME_LEN 264
 
+#define PN532_CLONER_VER "0.0.0"
+
 mftag        t;
 mfreader    r;
 
@@ -260,10 +262,8 @@ int main(int argc, char *const argv[])
     }
   }
 
-  // if (!pfDump) {
-  //   ERR("parameter -O is mandatory");
-  //   exit(EXIT_FAILURE);
-  // }
+  // Print banner and version
+  printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
 
   // Initialize reader/tag structures
   mf_init(&r);
