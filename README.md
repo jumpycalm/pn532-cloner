@@ -18,7 +18,20 @@ MIFARE Classic, MIFARE Ultralight (under development), NTAG (under development)
 ## Write
 Gen 2 and Gen 3 Magic MIFARE Classic, Magic MIFARE Ultralight (under development).
 
-# Compilation instruction
+# Usage
+## Reader driver installation
+If you purchased a driver from me, Windows should already have the driver for the reader. Just plug in the reader into the PC, wait for a minute or 2, the correct driver should gets installed automatically. If the driver is not installed correctly, you can open the Device Manager and install the driver with the following instruction:
+
+![Driver not installed](image/Driver_not_installed.PNG)
+![Driver install Step 1](image/Install_driver_1.PNG)
+![Driver install Step 2](image/Install_driver_2.PNG)
+![Driver install Step 3](image/Install_driver_3.PNG)
+![Driver installed](image/Driver_installed.PNG)
+
+## How to clone a tag
+Plug in the driver, run the application and follow the instruction on the screen
+
+# Build instruction
 
 ## Windows
 
