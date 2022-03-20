@@ -38,6 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <windows.h> //Sleep
 #ifdef _MSC_VER
 #include "unistd_w.h"
 #include "getopt.h"
@@ -119,13 +120,14 @@ void usage(FILE *stream, uint8_t errnr)
 
 static void pn532_cloner_usage()
 {
-  printf("\n");
+  printf("\n\n\n");
   printf("###################################################################################\n");
   printf("Usage:\n");
   printf("R             - (R)ead a tag\n");
   printf("W             - (W)rite to a magic tag using the data from the most recent read tag\n");
   //printf("W <File name> - (W)rite to a magic tag using the data from a saved mfd file\n");
   printf("C             - (C)lean/Restore a magic tag to the factory default\n");
+  printf("E             - (E)xit\n");
   printf("\n");
   printf("Example:\n");
   printf("Enter \"R\" to read a tag\n");
@@ -134,7 +136,7 @@ static void pn532_cloner_usage()
   printf("\n");
 }
 
-static bool read_mfc()
+bool read_mfc()
 {
   int i, k, n, j, m;
   int key, block;
@@ -728,16 +730,136 @@ static bool read_mfc()
   return true;
 }
 
-static bool write_mfc()
+// If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
+// TODO: Only Gen 3 magic is supported at this moment. Add support for Gen 2 magic
+bool write_mfc(bool force)
 {
-  printf("Write function coming soon...\n");
-  return true;
+  int tag_count;
+  int res;
+  uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
+  uint8_t abtRx[16]={0};
+
+  mf_configure(r.pdi);
+  
+  if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
+    nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
+    return false;
+  } else if (tag_count == 0) {
+    ERR("No tag found.");
+    return false;
+  }
+
+  //Use raw send/receive methods
+  if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+    nfc_perror(r.pdi, "nfc_configure");
+    return false;
+  }
+
+  // Send Gen3 Magic command to see if the tag is a Gen3 magic
+  // Using default timeout
+  res = nfc_initiator_transceive_bytes(r.pdi, abtCmd, 2, abtRx, sizeof(abtRx), -1);
+  // Magic Gen 3 tag
+  if (res == 16) {
+    if (!force) {
+      if ((abtRx[14] != 0xe1) || (abtRx[15] != 0xe2)) {
+        printf("Tag is not supported\n");
+        return false;
+      }
+    }
+    // Check if the tag is a blank tag by checking Block 0's UID memory
+    for (uint8_t i = 0; i < t.nt.nti.nai.szUidLen; i++) {
+      if (t.nt.nti.nai.abtUid[i] != 0) {
+        if (!clean_mfc(force))
+          return false;
+        else
+          break;
+      }
+    }
+    // As of here, the tag is a blank tag and is ready for writting data on
+    printf("Write function coming soon...\n");
+
+    return true;
+  } else {
+    printf("Non-Magic Gen 3 tag will be supported in the future release of software.");
+    return false;
+  }
 }
 
-static bool clean_mfc()
+// If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
+// TODO: Only Gen 3 magic is supported at this moment. Add support for Gen 2 magic
+bool clean_mfc(bool force)
 {
-  printf("Clean function coming soon...\n");
-  return true;
+  int tag_count;
+  int res;
+  uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
+  uint8_t abtRx[16]={0};
+
+  mf_configure(r.pdi);
+  
+  if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
+    nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
+    return false;
+  } else if (tag_count == 0) {
+    ERR("No tag found.");
+    return false;
+  }
+
+  //Use raw send/receive methods
+  if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+    nfc_perror(r.pdi, "nfc_configure");
+    return false;
+  }
+
+  // Send Gen3 Magic command to see if the tag is a Gen3 magic
+  // Using default timeout
+  res = nfc_initiator_transceive_bytes(r.pdi, abtCmd, 2, abtRx, sizeof(abtRx), -1);
+  // Magic Gen 3 tag
+  if (res == 16) {
+    if (!force) {
+      if ((abtRx[14] != 0xe1) || (abtRx[15] != 0xe2)) {
+        printf("Tag is not supported\n");
+        return false;
+      }
+    }
+    // Simply write all 0s + the last 2 marker bytes into the Magic Gen 3 tag.
+    // When changing the Block 0, the 1st 4 or 7 bytes are the UID, the rest bytes can be any value
+    // When changing the Block 0, the whole tag is resetted to factory default (including the keys)
+    // Magic preamble to write Block 0 and rest tag is 90F0CCCC10
+    memset(abtCmd, 0, sizeof(abtCmd));
+    memcpy(abtCmd, "\x90\xf0\xcc\xcc\x10", 5);
+    memcpy(abtCmd + 5 + 14, "\xe1\xe2", 2);
+
+    mf_configure(r.pdi);
+  
+    if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
+      nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
+      return false;
+    } else if (tag_count == 0) {
+      ERR("No tag found.");
+      return false;
+    }
+    
+    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+      nfc_perror(r.pdi, "nfc_configure");
+      return false;
+    }
+    res = nfc_initiator_transceive_bytes(r.pdi, abtCmd, sizeof(abtCmd), NULL, 0, 2000);
+    // Must keep the RF field on for at least 1 second for the tag to complete initialization
+    // even after we have alreagy got a response from the tag.
+    // Failure to do so, will brick the tag
+    Sleep(1000);
+    if (res == 2) {
+      printf("Clean a MIFARE Classic tag successfully!\n");
+      return true;
+    } else {
+      printf("Clean a MIFARE Classic tag failed. res = %d\n", res);
+      return false;
+    }
+    return true;
+  } else {
+    printf("Non-Magic Gen 3 tag will be supported in the future release of software.");
+    return false;
+  }
 }
 
 int main(int argc, char *const argv[])
@@ -758,14 +880,22 @@ int main(int argc, char *const argv[])
     pn532_cloner_usage();
     
     fgets(line, sizeof(line), stdin);
-    if (strlen(line) > 2)
-      printf("Advanced options will be supported in the future software release\n");
-    else if (line[0] == 'r' || line[0] == 'R')
+    if (line[0] == 'r' || line[0] == 'R')
       read_mfc();
-    else if (line[0] == 'w' || line[0] == 'W')
-      write_mfc();
-    else if (line[0] == 'c' || line[0] == 'C')
-      clean_mfc();
+    else if (line[0] == 'w' || line[0] == 'W') {
+      if (line[2] == 'F' || line[2] == 'f')
+        write_mfc(true);
+      else
+        write_mfc(false);
+    }
+    else if (line[0] == 'c' || line[0] == 'C') {
+      if (line[2] == 'F' || line[2] == 'f')
+        clean_mfc(true);
+      else
+        clean_mfc(false);
+    }
+    else if (line[0] == 'E' || line[0] == 'e')
+      break;
 
     nfc_close(r.pdi);
     nfc_exit(context);
