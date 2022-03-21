@@ -60,11 +60,9 @@ Because source code from [mfoc-hardnested](https://github.com/nfc-tools/mfoc-har
 
 # Support this project:
 
-Contribute code change to this project to make this project better
+Contribute code change, report bug and provide suggestions for improvements to this project to make this project better
 
-Buy a PN532 board with a USB-C port from me
-
-Buy the blank magic tags from me
+Buy RFID tags and RFID research tools from my [online store](https://www.mrkeyfob.com/collections/tags-for-rfid-research)
 
 # Proprietary Notes
 FeliCa is a registered trademark of the Sony Corporation. MIFARE is a trademark of NXP Semiconductors. Jewel Topaz is a trademark of Innovision Research & Technology. All other trademarks are the property of their respective owners.
