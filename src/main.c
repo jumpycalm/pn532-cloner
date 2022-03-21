@@ -63,7 +63,7 @@
 
 #define MAX_FRAME_LEN 264
 
-#define PN532_CLONER_VER "0.0.0"
+#define PN532_CLONER_VER "0.0.1"
 
 mftag        t;
 mfreader    r;
