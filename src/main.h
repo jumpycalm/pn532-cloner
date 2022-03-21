@@ -108,6 +108,7 @@ countKeys *uniqsort(uint64_t *possibleKeys, uint32_t size);
 void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest);
 long long unsigned int bytes_to_num(uint8_t *src, uint32_t len);
 
+bool write_blank_mfc(bool write_block_zero);
 bool clean_mfc(bool force);
 bool write_mfc(bool force);
 bool read_mfc();

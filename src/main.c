@@ -82,6 +82,23 @@ uint32_t unknownSector = 0;
 char unknownKeyLetter = 'A';
 uint32_t unexpected_random = 0;
 
+// mtDump saves the memory dump of last read MFC tag
+// last_read_type saves the last success read MFC tag
+typedef enum {
+  MFC_TYPE_INVALID = 0,
+  MFC_TYPE_C14,
+  MFC_TYPE_C17,
+  MFC_TYPE_C44,
+  MFC_TYPE_C47,
+} mfc_type;
+static mfc_type last_read_mfc_type = MFC_TYPE_INVALID;
+static uint8_t last_read_uid[7];
+static mifare_classic_tag mtDump;
+
+
+static uint8_t default_key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+static uint8_t default_acl[] = {0xff, 0x07, 0x80, 0x69};
+
 
 // Sectors 0 to 31 have 4 blocks per sector.
 // Sectors 32 to 39 have 16 blocks per sector.
@@ -136,6 +153,131 @@ static void pn532_cloner_usage()
   printf("\n");
 }
 
+static void print_success_or_failure(bool bFailure, uint32_t *uiBlockCounter)
+{
+  printf("%c", (bFailure) ? 'x' : '.');
+  if (uiBlockCounter && !bFailure)
+    *uiBlockCounter += 1;
+}
+
+static bool is_first_block(uint32_t uiBlock)
+{
+  // Test if we are in the small or big sectors
+  if (uiBlock < 128)
+    return ((uiBlock) % 4 == 0);
+  else
+    return ((uiBlock) % 16 == 0);
+}
+
+static bool is_trailer_block(uint32_t uiBlock)
+{
+  // Test if we are in the small or big sectors
+  if (uiBlock < 128)
+    return ((uiBlock + 1) % 4 == 0);
+  else
+    return ((uiBlock + 1) % 16 == 0);
+}
+/*
+static uint32_t get_trailer_block(uint32_t uiFirstBlock)
+{
+  // Test if we are in the small or big sectors
+  uint32_t trailer_block = 0;
+  if (uiFirstBlock < 128) {
+    trailer_block = uiFirstBlock + (3 - (uiFirstBlock % 4));
+  } else {
+    trailer_block = uiFirstBlock + (15 - (uiFirstBlock % 16));
+  }
+  return trailer_block;
+}
+*/
+// Write to a MFC tag that has been initialized to factory default
+// TODO: A lot of improvements need to be done in the next change such as better output
+// No need to write 0 data block
+bool write_blank_mfc(bool write_block_zero)
+{
+  uint32_t current_block = 0;
+  uint32_t total_block = NR_BLOCKS_1k;
+  bool bFailure = true;
+  uint32_t uiWriteBlocks = 0;
+  mifare_param mp;
+
+  if (!write_block_zero)
+    current_block = 1;
+
+  // Check to see if we have a success read
+  if (last_read_mfc_type == MFC_TYPE_INVALID) {
+    printf("Please read your original tag first before write to a new tag\n");
+    return false;
+  } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
+    total_block = NR_BLOCKS_4k;
+
+  mf_configure(r.pdi);
+
+  // Completely write the card, but skipping block 0 if we don't need to write on it
+  for (; current_block < total_block; current_block++) {
+    // Authenticate everytime we reach the first sector of a new block
+    if (current_block == 1 || is_first_block(current_block)) {
+      if (bFailure) {
+        // When a failure occured we need to redo the anti-collision
+        if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
+          printf("!\nError: tag was removed\n");
+          return false;
+        }
+        bFailure = false;
+      }
+
+      // Try to authenticate for the current sector
+      memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+      memcpy(mp.mpa.abtKey, default_key, 6);
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
+        if (nfc_initiator_select_passive_target(r.pdi, nm, t.nt.nti.nai.abtUid, t.nt.nti.nai.szUidLen, NULL) <= 0) {
+        ERR("tag was removed");
+        return false;
+        }
+      }
+    }
+
+    if (is_trailer_block(current_block)) {
+      // Copy the default key and reset the access bits
+      memcpy(mp.mpt.abtKeyA, mtDump.amb[current_block].mbt.abtKeyA, sizeof(mp.mpt.abtKeyA));
+      memcpy(mp.mpt.abtAccessBits, default_acl, sizeof(mp.mpt.abtAccessBits));
+      memcpy(mp.mpt.abtKeyB, mtDump.amb[current_block].mbt.abtKeyB, sizeof(mp.mpt.abtKeyB));
+
+      // Try to write the trailer
+      if (nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp) == false) {
+        printf("failed to write trailer block %d \n", current_block);
+        bFailure = true;
+      }
+    } else {
+      // Make sure a earlier write did not fail
+      if (!bFailure) {
+        // Try to write the data block
+        memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
+        if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
+          bFailure = true;
+          printf("Failure to write to data block %i\n", current_block);
+        }
+        printf("Block %u Write success.\n", current_block);
+      } else {
+        printf("Failure during write process.\n");
+      }
+
+    //}
+    // Show if the write went well for each block
+    print_success_or_failure(bFailure, &uiWriteBlocks);
+    if (bFailure)
+      return false;
+    }
+  }
+
+  printf("|\n");
+  printf("Done\n");
+  fflush(stdout);
+
+  return true;
+}
+
+
 bool read_mfc()
 {
   int i, k, n, j, m;
@@ -151,7 +293,7 @@ bool read_mfc()
   int dumpKeysA = true;
   bool failure = false;
   bool skip = false;
-  bool force_hardnested = false;
+  bool force_hardnested = true; // Set to force hardnested for now until we have a better way to identify it.
   // Next default key specified as option (-k)
   uint8_t *defKeys = NULL;
   size_t defKeys_len = 0;
@@ -175,12 +317,13 @@ bool read_mfc()
   bKeys        *bk;
 
   static mifare_param mp, mtmp;
-  static mifare_classic_tag mtDump;
 
   mifare_cmd mc;
   FILE *pfDump = NULL;
 
   bool use_default_key=true;
+
+  last_read_mfc_type = MFC_TYPE_INVALID; // Always assume read is failed before performing the read
 
   mf_configure(r.pdi);
 
@@ -709,6 +852,20 @@ bool read_mfc()
       return false;
     }
 
+    // Save the information to global buffer in order to feed into the write function
+    if (t.nt.nti.nai.szUidLen == 4) {
+      if (t.num_blocks == NR_BLOCKS_1k)
+        last_read_mfc_type = MFC_TYPE_C14;
+      else
+        last_read_mfc_type = MFC_TYPE_C44;
+    } else {
+      if (t.num_blocks == NR_BLOCKS_1k)
+        last_read_mfc_type = MFC_TYPE_C17;
+      else
+        last_read_mfc_type = MFC_TYPE_C47;
+    }
+    memcpy(last_read_uid, t.nt.nti.nai.abtUid, 7);
+
     // Finally save all keys + data to file
     if (pfDump) {
       uint16_t dump_size = (t.num_blocks + 1) * 16;
@@ -776,7 +933,47 @@ bool write_mfc(bool force)
       }
     }
     // As of here, the tag is a blank tag and is ready for writting data on
-    printf("Write function coming soon...\n");
+    // Check if the last read result is successfull
+    if (last_read_mfc_type == MFC_TYPE_INVALID) {
+      printf("Please read your original tag first before write to a new tag\n");
+      return false;
+    }
+    // Gen3 magic use special command to write Block 0
+    memset(abtCmd, 0, sizeof(abtCmd));
+    memcpy(abtCmd, "\x90\xf0\xcc\xcc\x10", 5);
+    memcpy(abtCmd + 5, last_read_uid, 7);
+    memcpy(abtCmd + 5 + 14, "\xe1\xe2", 2);
+
+    mf_configure(r.pdi);
+  
+    if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
+      nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
+      return false;
+    } else if (tag_count == 0) {
+      ERR("No tag found.");
+      return false;
+    }
+    
+    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+      nfc_perror(r.pdi, "nfc_configure");
+      return false;
+    }
+    res = nfc_initiator_transceive_bytes(r.pdi, abtCmd, sizeof(abtCmd), NULL, 0, 2000);
+    // Must keep the RF field on for at least 1 second for the tag to complete initialization
+    // even after we have alreagy got a response from the tag.
+    // Failure to do so, will brick the tag
+    Sleep(1000);
+    if (res == 2) {
+      printf("Block 0 write success.\n");
+      if (!write_blank_mfc(false)) {
+        printf("Write to a new tag failed\n");
+        return false;
+      } else
+        return true;
+    } else {
+      printf("Block 0 write failed. res = %d\n", res);
+      return false;
+    }
 
     return true;
   } else {
