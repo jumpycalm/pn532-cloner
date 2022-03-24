@@ -39,6 +39,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <windows.h> //Sleep
+#include <sys/stat.h>   // stat
 #ifdef _MSC_VER
 #include "unistd_w.h"
 #include "getopt.h"
@@ -65,8 +66,8 @@
 
 #define PN532_CLONER_VER "0.0.1"
 
-mftag        t;
-mfreader    r;
+mftag    t;
+mfreader r;
 
 static const nfc_modulation nm = {
 .nmt = NMT_ISO14443A,
@@ -94,6 +95,7 @@ typedef enum {
 static mfc_type last_read_mfc_type = MFC_TYPE_INVALID;
 static uint8_t last_read_uid[7];
 static mifare_classic_tag mtDump;
+static char file_name[22];
 
 
 static uint8_t default_key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -160,7 +162,15 @@ static void print_success_or_failure(bool bFailure, uint32_t *uiBlockCounter)
     *uiBlockCounter += 1;
 }
 
-static bool is_first_block(uint32_t uiBlock)
+bool if_tag_is_blank(nfc_iso14443a_info tag_info)
+{
+  for (uint8_t i = 0; i < tag_info.szUidLen; i ++)
+    if (tag_info.abtUid[i])
+      return false;
+  return true;
+}
+
+bool is_first_block(uint32_t uiBlock)
 {
   // Test if we are in the small or big sectors
   if (uiBlock < 128)
@@ -169,7 +179,7 @@ static bool is_first_block(uint32_t uiBlock)
     return ((uiBlock) % 16 == 0);
 }
 
-static bool is_trailer_block(uint32_t uiBlock)
+bool is_trailer_block(uint32_t uiBlock)
 {
   // Test if we are in the small or big sectors
   if (uiBlock < 128)
@@ -277,6 +287,31 @@ bool write_blank_mfc(bool write_block_zero)
   return true;
 }
 
+// Changing Block 0 or configuration block may brick some tags
+// This function will set Block 0 to all 0s and set all the configuration blocks with the default access bits
+void sanitize_mfc_buffer(void)
+{
+  memset(&mtDump, 0, sizeof(mifare_classic_block));
+  for (uint16_t i = 3; i < NR_BLOCKS_4k; i+=4) {
+    if (is_trailer_block(i)) {
+      memcpy(mtDump.amb[i].mbt.abtAccessBits, default_acl, sizeof(default_acl));
+    }
+  }
+}
+
+void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
+{
+  if (num_blocks == NR_BLOCKS_1k && uid_len == 4)
+    sprintf(name, "C14%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_1k && uid_len == 7)
+    sprintf(name, "C17%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  if (num_blocks == NR_BLOCKS_4k && uid_len == 4)
+    sprintf(name, "C44%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
+    sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  else
+    name = NULL;
+}
 
 bool read_mfc()
 {
@@ -353,22 +388,20 @@ bool read_mfc()
     case 0x88:
     case 0x28:
       if (get_rats_is_2k(t, r)) {
-          printf("Found Mifare Plus 2k tag\n");
-          t.num_sectors = NR_TRAILERS_2k;
-          t.num_blocks = NR_BLOCKS_2k;
+          printf("MIFARE Plus 2K tagis not supported\n");
+          return false;
       } else {
-        printf("Found Mifare Classic 1k tag\n");
+        printf("Detected MIFARE Classic 1K tag\n");
         t.num_sectors = NR_TRAILERS_1k;
         t.num_blocks = NR_BLOCKS_1k;
       }
       break;
     case 0x09:
-      printf("Found Mifare Classic Mini tag\n");
-      t.num_sectors = NR_TRAILERS_MINI;
-      t.num_blocks = NR_BLOCKS_MINI;
+      printf("MIFARE Classic Mini tag is not supported\n");
+      return false;
       break;
     case 0x18:
-      printf("Found Mifare Classic 4k tag\n");
+      printf("Detected MIFARE Classic 4K tag\n");
       t.num_sectors = NR_TRAILERS_4k;
       t.num_blocks = NR_BLOCKS_4k;
       break;
@@ -403,6 +436,25 @@ bool read_mfc()
   // Initialize t.sectors, keys are not known yet
   for (uint8_t s = 0; s < (t.num_sectors); ++s) {
     t.sectors[s].foundKeyA = t.sectors[s].foundKeyB = false;
+  }
+
+  // Check if the tag is a blank tag by checking the UID
+  if (if_tag_is_blank(t.nt.nti.nai)) {
+    printf("This is blank tag\n");
+    return false;
+  }
+
+  // Check if the tag is on the file
+  // Pick a file name based on the tag's type and UID
+  generate_file_name(file_name, t.num_blocks, t.nt.nti.nai.szUidLen, t.nt.nti.nai.abtUid);
+
+  // Check if the file is already exist (data is already on file)
+  struct stat buffer;   
+  if (!stat(file_name, &buffer)) {
+    printf("This tag is already on file\n");
+    printf("To re-read this file, please delete %s file and retry\n", file_name);
+    printf("To write this tag to a new tag, please execute \"w %s\"\n", file_name);
+    return false;
   }
 
   print_nfc_target(&t.nt, true);
@@ -845,13 +897,6 @@ bool read_mfc()
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
     }
 
-    // TODO: Pick up a file name based on the tag's type and UID
-    // For now, name all the file to MFC.bin
-    if (!(pfDump = fopen("MFC.bin", "wb"))) {
-      fprintf(stderr, "Cannot open: %s, exiting\n", optarg);
-      return false;
-    }
-
     // Save the information to global buffer in order to feed into the write function
     if (t.nt.nti.nai.szUidLen == 4) {
       if (t.num_blocks == NR_BLOCKS_1k)
@@ -865,6 +910,14 @@ bool read_mfc()
         last_read_mfc_type = MFC_TYPE_C47;
     }
     memcpy(last_read_uid, t.nt.nti.nai.abtUid, 7);
+
+    // Make sure to sanitize the buffer before logging it into a file
+    sanitize_mfc_buffer();
+
+    if (!(pfDump = fopen(file_name, "wb"))) {
+      fprintf(stderr, "Saving log file failed\n");
+      return false;
+    }
 
     // Finally save all keys + data to file
     if (pfDump) {
@@ -884,6 +937,9 @@ bool read_mfc()
   // Reset the "advanced" configuration to normal
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
+
+  // Display success message
+  printf("Read tag success!\n");
   return true;
 }
 
@@ -1249,7 +1305,7 @@ get_rats_is_2k(mftag t, mfreader r)
             && (abtRx[7] == 0x2f) && (abtRx[8] == 0x2f)
             && ((t.nt.nti.nai.abtAtqa[1] & 0x02) == 0x00));
   } else {
-    printf("ATS len = %d\n", res);
+    //printf("ATS len = %d\n", res);
     return false;
   }
 }

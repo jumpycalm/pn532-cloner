@@ -108,6 +108,11 @@ countKeys *uniqsort(uint64_t *possibleKeys, uint32_t size);
 void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest);
 long long unsigned int bytes_to_num(uint8_t *src, uint32_t len);
 
+bool if_tag_is_blank(nfc_iso14443a_info tag_info);
+void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid);
+bool is_first_block(uint32_t uiBlock);
+bool is_trailer_block(uint32_t uiBlock);
+void sanitize_mfc_buffer(void);
 bool write_blank_mfc(bool write_block_zero);
 bool clean_mfc(bool force);
 bool write_mfc(bool force);
