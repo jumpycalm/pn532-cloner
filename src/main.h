@@ -115,7 +115,7 @@ bool is_trailer_block(uint32_t uiBlock);
 void sanitize_mfc_buffer(void);
 bool write_blank_mfc(bool write_block_zero);
 bool clean_mfc(bool force);
-bool write_mfc(bool force);
+bool write_mfc(bool force, char *file_name);
 bool read_mfc();
 
 #endif

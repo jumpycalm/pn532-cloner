@@ -63,6 +63,7 @@
 #include "cmdhfmfhard.h"
 
 #define MAX_FRAME_LEN 264
+#define MAX_FILE_LEN 22 // 3 leading chars as type, followed by up to 7-byte UID (14 chars), followed by .bin and ending char (5 chars)
 
 #define PN532_CLONER_VER "0.0.1"
 
@@ -95,7 +96,7 @@ typedef enum {
 static mfc_type last_read_mfc_type = MFC_TYPE_INVALID;
 static uint8_t last_read_uid[7];
 static mifare_classic_tag mtDump;
-static char file_name[22];
+static char file_name[MAX_FILE_LEN];
 
 
 static uint8_t default_key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -142,15 +143,15 @@ static void pn532_cloner_usage()
   printf("\n\n\n");
   printf("###################################################################################\n");
   printf("Usage:\n");
-  printf("R             - (R)ead a tag\n");
-  printf("W             - (W)rite to a magic tag using the data from the most recent read tag\n");
-  //printf("W <File name> - (W)rite to a magic tag using the data from a saved mfd file\n");
-  printf("C             - (C)lean/Restore a magic tag to the factory default\n");
-  printf("E             - (E)xit\n");
+  printf("r             - (R)ead a tag\n");
+  printf("w             - (W)rite to a magic tag using the data from the most recent read tag\n");
+  printf("w <File name> - (W)rite to a magic tag using the data from a saved dump file\n");
+  printf("c             - (C)lean/Restore a magic tag to the factory default\n");
+  printf("r             - (E)xit\n");
   printf("\n");
   printf("Example:\n");
-  printf("Enter \"R\" to read a tag\n");
-  printf("Enter \"W\" to write to a magic tag using the data from the tag you just read\n");
+  printf("Enter \"r\" to read a tag\n");
+  printf("Enter \"w\" to write to a magic tag using the data from the tag you just read\n");
   printf("###################################################################################\n");
   printf("\n");
 }
@@ -391,9 +392,16 @@ bool read_mfc()
           printf("MIFARE Plus 2K tagis not supported\n");
           return false;
       } else {
-        printf("Detected MIFARE Classic 1K tag\n");
         t.num_sectors = NR_TRAILERS_1k;
         t.num_blocks = NR_BLOCKS_1k;
+        if (t.nt.nti.nai.szUidLen == 4)
+          printf("Detected MIFARE Classic 1K 4-Byte tag\n");
+        else if (t.nt.nti.nai.szUidLen == 7)
+          printf("Detected MIFARE Classic 1K 7-Byte tag\n");
+        else {
+          printf("Unsupported UID length\n");
+          return false;
+        }
       }
       break;
     case 0x09:
@@ -401,9 +409,16 @@ bool read_mfc()
       return false;
       break;
     case 0x18:
-      printf("Detected MIFARE Classic 4K tag\n");
       t.num_sectors = NR_TRAILERS_4k;
       t.num_blocks = NR_BLOCKS_4k;
+      if (t.nt.nti.nai.szUidLen == 4)
+        printf("Detected MIFARE Classic 4K 4-Byte tag\n");
+      else if (t.nt.nti.nai.szUidLen == 7)
+        printf("Detected MIFARE Classic 4K 7-Byte tag\n");
+      else {
+        printf("Unsupported UID length\n");
+        return false;
+      }
       break;
     default:
       ERR("Cannot determine card type from SAK");
@@ -943,14 +958,88 @@ bool read_mfc()
   return true;
 }
 
+static bool load_mfc_file(char *file_name)
+{
+  uint16_t total_blocks;
+  uint8_t uid_len;
+  uint8_t i;
+  if (file_name[0] != 'C')
+    return false;
+  if (file_name[1] == '1')
+    total_blocks = NR_BLOCKS_1k + 1;
+  else if (file_name[1] == '4')
+    total_blocks = NR_BLOCKS_4k + 1;
+  else
+    return false;
+  if (file_name[2] == '4')
+    uid_len = 4;
+  else if (file_name[2] == '7')
+    uid_len = 7;
+  else
+    return false;
+
+  // Sanity check the UID part to see if they are valid number or hex
+  for (i = 0; i < uid_len * 2; i++) {
+    if (!isxdigit(file_name[3 + i]))
+      return false;
+  }
+  // Parse UID from the file name into last_read_uid
+  for (i = 0; i < uid_len; i++) {
+    if (sscanf(file_name + 3 + i * 2, "%2hhx", last_read_uid + i) != 1)
+      return false;
+  }
+
+  // Load the content into mtDump
+  // First need to patch the file_name as the last entry of the file_name may be a carriage return instead of a 0
+  if (uid_len == 4)
+    file_name[15] = 0;
+  else
+    file_name[21] = 0;
+  FILE *pfDump = fopen(file_name, "rb");
+  if (pfDump == NULL) {
+    printf("Unable to find file\n");
+    return false;
+  }
+
+  if (fread(&mtDump, 1, total_blocks * sizeof(mifare_classic_block), pfDump) != total_blocks * sizeof(mifare_classic_block)) {
+    printf("File is corrupted\n");
+    fclose(pfDump);
+    return false;
+  }
+  fclose(pfDump);
+
+  // Set global variables
+  if (uid_len == 4) {
+    if (total_blocks == NR_BLOCKS_1k + 1)
+      last_read_mfc_type = MFC_TYPE_C14;
+    else
+      last_read_mfc_type = MFC_TYPE_C44;
+  } else {
+    if (total_blocks == NR_BLOCKS_1k + 1)
+      last_read_mfc_type = MFC_TYPE_C17;
+    else
+      last_read_mfc_type = MFC_TYPE_C47;
+  }
+  return true;
+}
+
 // If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
 // TODO: Only Gen 3 magic is supported at this moment. Add support for Gen 2 magic
-bool write_mfc(bool force)
+bool write_mfc(bool force, char *file_name)
 {
   int tag_count;
   int res;
   uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
   uint8_t abtRx[16]={0};
+
+  // If the file_name starts with C, that indicates a MIFARE Classic binary file is parsed in
+  // Try to load this file into the global buffer, if loading file failed, stop writing the file
+  if (file_name[0] == 'C') {
+    if (!load_mfc_file(file_name)) {
+      printf("Unable to open %s\n", file_name);
+      return false;
+    }
+  }
 
   mf_configure(r.pdi);
   
@@ -1117,7 +1206,7 @@ bool clean_mfc(bool force)
 
 int main(int argc, char *const argv[])
 {
-  char line[20]= { 0 };
+  char line[3 + MAX_FILE_LEN]= { 0 }; // Leading command + space + carriage return = need extra 3 bytes
 
   // Print banner and version
   printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
@@ -1137,9 +1226,9 @@ int main(int argc, char *const argv[])
       read_mfc();
     else if (line[0] == 'w' || line[0] == 'W') {
       if (line[2] == 'F' || line[2] == 'f')
-        write_mfc(true);
+        write_mfc(true, line + 2);
       else
-        write_mfc(false);
+        write_mfc(false, line + 2);
     }
     else if (line[0] == 'c' || line[0] == 'C') {
       if (line[2] == 'F' || line[2] == 'f')
