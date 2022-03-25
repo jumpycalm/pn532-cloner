@@ -156,13 +156,6 @@ static void pn532_cloner_usage()
   printf("\n");
 }
 
-static void print_success_or_failure(bool bFailure, uint32_t *uiBlockCounter)
-{
-  printf("%c", (bFailure) ? 'x' : '.');
-  if (uiBlockCounter && !bFailure)
-    *uiBlockCounter += 1;
-}
-
 bool if_tag_is_blank(nfc_iso14443a_info tag_info)
 {
   for (uint8_t i = 0; i < tag_info.szUidLen; i ++)
@@ -202,14 +195,10 @@ static uint32_t get_trailer_block(uint32_t uiFirstBlock)
 }
 */
 // Write to a MFC tag that has been initialized to factory default
-// TODO: A lot of improvements need to be done in the next change such as better output
-// No need to write 0 data block
 bool write_blank_mfc(bool write_block_zero)
 {
   uint32_t current_block = 0;
-  uint32_t total_block = NR_BLOCKS_1k;
-  bool bFailure = true;
-  uint32_t uiWriteBlocks = 0;
+  uint32_t total_blocks = NR_BLOCKS_1k + 1;
   mifare_param mp;
 
   if (!write_block_zero)
@@ -220,70 +209,40 @@ bool write_blank_mfc(bool write_block_zero)
     printf("Please read your original tag first before write to a new tag\n");
     return false;
   } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
-    total_block = NR_BLOCKS_4k;
+    total_blocks = NR_BLOCKS_4k + 1;
+
+  // Sanitize the buffer in case the buffer is not sanitized
+  // Failure to do so may brick the tag if loading a dump file not from this application
+  sanitize_mfc_buffer();
 
   mf_configure(r.pdi);
 
+  if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
+    printf("Error: tag was removed\n");
+    return false;
+  }
+
   // Completely write the card, but skipping block 0 if we don't need to write on it
-  for (; current_block < total_block; current_block++) {
+  for (; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach the first sector of a new block
     if (current_block == 1 || is_first_block(current_block)) {
-      if (bFailure) {
-        // When a failure occured we need to redo the anti-collision
-        if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
-          printf("!\nError: tag was removed\n");
-          return false;
-        }
-        bFailure = false;
-      }
-
       // Try to authenticate for the current sector
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
       if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
-        if (nfc_initiator_select_passive_target(r.pdi, nm, t.nt.nti.nai.abtUid, t.nt.nti.nai.szUidLen, NULL) <= 0) {
-        ERR("tag was removed");
+        printf("Authentication error\n");
         return false;
-        }
       }
     }
 
-    if (is_trailer_block(current_block)) {
-      // Copy the default key and reset the access bits
-      memcpy(mp.mpt.abtKeyA, mtDump.amb[current_block].mbt.abtKeyA, sizeof(mp.mpt.abtKeyA));
-      memcpy(mp.mpt.abtAccessBits, default_acl, sizeof(mp.mpt.abtAccessBits));
-      memcpy(mp.mpt.abtKeyB, mtDump.amb[current_block].mbt.abtKeyB, sizeof(mp.mpt.abtKeyB));
-
-      // Try to write the trailer
-      if (nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp) == false) {
-        printf("failed to write trailer block %d \n", current_block);
-        bFailure = true;
-      }
-    } else {
-      // Make sure a earlier write did not fail
-      if (!bFailure) {
-        // Try to write the data block
-        memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
-        if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
-          bFailure = true;
-          printf("Failure to write to data block %i\n", current_block);
-        }
-        printf("Block %u Write success.\n", current_block);
-      } else {
-        printf("Failure during write process.\n");
-      }
-
-    //}
-    // Show if the write went well for each block
-    print_success_or_failure(bFailure, &uiWriteBlocks);
-    if (bFailure)
+    // Write data
+    memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
+      printf("Failed at writing block %d \n", current_block);
       return false;
     }
+    //printf("Block %u write success.\n", current_block);
   }
-
-  printf("|\n");
-  printf("Done\n");
-  fflush(stdout);
 
   return true;
 }
@@ -1109,12 +1068,14 @@ bool write_mfc(bool force, char *file_name)
     // Failure to do so, will brick the tag
     Sleep(1000);
     if (res == 2) {
-      printf("Block 0 write success.\n");
+      printf("Start writing to the Magic tag, please wait up to 5s\n");
       if (!write_blank_mfc(false)) {
         printf("Write to a new tag failed\n");
         return false;
-      } else
+      } else {
+        printf("Write to a Magic tag success!\n");
         return true;
+      }
     } else {
       printf("Block 0 write failed. res = %d\n", res);
       return false;
