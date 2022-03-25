@@ -101,6 +101,8 @@ static char file_name[MAX_FILE_LEN];
 
 static uint8_t default_key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 static uint8_t default_acl[] = {0xff, 0x07, 0x80, 0x69};
+static const uint8_t default_data_block[16] = { 0 };
+static const uint8_t default_trailer_block[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 
 // Sectors 0 to 31 have 4 blocks per sector.
@@ -194,6 +196,52 @@ static uint32_t get_trailer_block(uint32_t uiFirstBlock)
   return trailer_block;
 }
 */
+
+static uint16_t get_leading_block(uint16_t block)
+{
+  // Test if we are in the small or big sectors
+  if (block < 128)
+    return block / 4 * 4 ;
+  else
+    return block / 16 * 16;
+}
+
+// Calculate if we reached the 1st block that needs authentication
+static bool if_need_authenticate(uint16_t current_block)
+{
+  int i; // i must be a signed number because we are doing minus, it's possible i will reach to -1 to compare with 0
+  if (is_trailer_block(current_block)) {
+    if (!memcmp(&mtDump.amb[current_block], default_trailer_block, 16))
+      return false;
+  } else {
+    if (!memcmp(&mtDump.amb[current_block], default_data_block, 16))
+      return false;
+  }
+
+  // If the leading block is not default, we need to authenticate this block
+  if (get_leading_block(current_block) == current_block)
+    return true;
+  // If the current block is not the leading block, we need to check if there's any block before this block is not default
+  for (i = current_block - 1; i >= get_leading_block(current_block); i--) {
+    if (memcmp(&mtDump.amb[i], default_data_block, 16))
+      return false;
+  }
+  return true;
+}
+
+// Check if we need to write this block (if data is the default data, no need to write)
+static bool if_need_write_current_block(uint16_t current_block)
+{
+  if (is_trailer_block(current_block)) {
+    if (!memcmp(&mtDump.amb[current_block], default_trailer_block, 16))
+      return false;
+  } else {
+    if (!memcmp(&mtDump.amb[current_block], default_data_block, 16))
+      return false;
+  }
+  return true;
+}
+
 // Write to a MFC tag that has been initialized to factory default
 bool write_blank_mfc(bool write_block_zero)
 {
@@ -224,9 +272,9 @@ bool write_blank_mfc(bool write_block_zero)
 
   // Completely write the card, but skipping block 0 if we don't need to write on it
   for (; current_block < total_blocks; current_block++) {
-    // Authenticate everytime we reach the first sector of a new block
-    if (current_block == 1 || is_first_block(current_block)) {
-      // Try to authenticate for the current sector
+    // Authenticate everytime we reach new block and need to actually write a data on
+    if (if_need_authenticate(current_block)) {
+      //printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
       if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
@@ -236,12 +284,14 @@ bool write_blank_mfc(bool write_block_zero)
     }
 
     // Write data
-    memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
-    if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
-      printf("Failed at writing block %d \n", current_block);
-      return false;
+    if (if_need_write_current_block(current_block)) {
+      memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
+        printf("Failed at writing block %d \n", current_block);
+        return false;
+      }
+      //printf("Block %u write success.\n", current_block);
     }
-    //printf("Block %u write success.\n", current_block);
   }
 
   return true;
