@@ -22,7 +22,7 @@
 #include <string.h>
 #include <errno.h>
 #include <lzma.h>
-#include "../cmdhfmfhard.h"
+#include "../hardnested.h"
 
 typedef struct bitflip_info {
     uint32_t len;

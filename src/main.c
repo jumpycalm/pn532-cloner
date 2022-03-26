@@ -60,7 +60,7 @@
 
 //SLRE 
 #include "slre.h"
-#include "cmdhfmfhard.h"
+#include "hardnested.h"
 
 #define MAX_FRAME_LEN 264
 #define MAX_FILE_LEN 22 // 3 leading chars as type, followed by up to 7-byte UID (14 chars), followed by .bin and ending char (5 chars)
@@ -104,41 +104,6 @@ static uint8_t default_acl[] = {0xff, 0x07, 0x80, 0x69};
 static const uint8_t default_data_block[16] = { 0 };
 static const uint8_t default_trailer_block[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-
-// Sectors 0 to 31 have 4 blocks per sector.
-// Sectors 32 to 39 have 16 blocks per sector.
-
-uint8_t sector_to_block(uint8_t sector)
-{
-  if (sector<32) {
-    return sector<<2;
-  }
-  sector -= 32;
-
-  return 128+(sector<<4);
-}
-
-void usage(FILE *stream, uint8_t errnr)
-{
-  fprintf(stream, "Usage: mfoc-hardnested [-h] [-C] [-F] [-k key] [-f file] ... [-P probnum] [-T tolerance] [-O output]\n");
-  fprintf(stream, "\n");
-  fprintf(stream, "  h     print this help and exit\n");
-  fprintf(stream, "  C     skip testing default keys\n");
-  fprintf(stream, "  F     force the hardnested keys extraction\n");
-  fprintf(stream, "  Z     reduce memory usage\n");
-  fprintf(stream, "  k     try the specified key in addition to the default keys\n");
-  fprintf(stream, "  f     parses a file of keys to add in addition to the default keys \n");    
-  fprintf(stream, "  P     number of probes per sector, instead of default of 20\n");
-  fprintf(stream, "  T     nonce tolerance half-range, instead of default of 20\n        (i.e., 40 for the total range, in both directions)\n");
-  fprintf(stream, "  O     file in which the card contents will be written\n");
-  fprintf(stream, "\n");
-  fprintf(stream, "Example: mfoc-hardnested -O mycard.mfd\n");
-  fprintf(stream, "Example: mfoc-hardnested -k ffffeeeedddd -O mycard.mfd\n");
-  fprintf(stream, "Example: mfoc-hardnested -f keys.txt -O mycard.mfd\n");
-  fprintf(stream, "Example: mfoc-hardnested -P 50 -T 30 -O mycard.mfd\n");
-  fprintf(stream, "\n");
-  exit(errnr);
-}
 
 static void pn532_cloner_usage()
 {
@@ -323,22 +288,21 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
     name = NULL;
 }
 
+// Modern MIFARE Classic tags are all MIFARE Classic EV1 tags, which means they are not vulnerable to old faster attacks
+// such as Darkside attack, nested attack. Therefore, we only use hardnested attack to recover the unknown keys 
 bool read_mfc()
 {
-  int i, k, n, j, m;
+  int i, n, j, m;
   int key, block;
   int succeed = 1;
 
   // Exploit sector
   int e_sector;
-  int probes = DEFAULT_PROBES_NR;
-  int sets = DEFAULT_SETS_NR;
 
   // By default, dump 'A' keys
   int dumpKeysA = true;
   bool failure = false;
   bool skip = false;
-  bool force_hardnested = true; // Set to force hardnested for now until we have a better way to identify it.
   // Next default key specified as option (-k)
   uint8_t *defKeys = NULL;
   size_t defKeys_len = 0;
@@ -348,7 +312,8 @@ bool read_mfc()
     {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, // Default key (first key used by program if no user defined key)
     {0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5}, // NFCForum MAD key
     {0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7}, // NFCForum content key
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}  // Blank key
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Blank key
+    {0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5}
   };
 
 
@@ -356,7 +321,6 @@ bool read_mfc()
 
   // Pointers to possible keys
   pKeys        *pk;
-  countKeys    *ck;
 
   // Pointer to already broken keys, except defaults
   bKeys        *bk;
@@ -383,7 +347,7 @@ bool read_mfc()
 
   // Test if a compatible MIFARE tag is used
   if (((t.nt.nti.nai.btSak & 0x08) == 0) && (t.nt.nti.nai.btSak != 0x01)) {
-    ERR("only Mifare Classic is supported");
+    printf("Only MIFARE Classic tags are supported");
     return false;
   }
 
@@ -655,7 +619,6 @@ bool read_mfc()
 
   // Return the first (exploit) sector encrypted with the default key or -1 (we have all keys)
   e_sector = find_exploit_sector(t);
-  //mf_enhanced_auth(e_sector, 0, t, r, &d, pk, 'd'); // AUTH + Get Distances mode
 
   // Recover key from encrypted sectors, j is a sector counter
   for (m = 0; m < 2; ++m) {
@@ -722,117 +685,19 @@ bool read_mfc()
         }
         if (skip) continue; // We have already revealed key, go to the next iteration
         
-        if ((mf_enhanced_auth(e_sector, 0, t, r, &d, pk, 'd', dumpKeysA, 0, 0) == -99999) || force_hardnested == true) {
         //Hardnested attack
-            
-            mf_configure(r.pdi);
-            mf_anticollision(t, r);
-            
-            uint8_t blockNo = sector_to_block(e_sector); //Block
-            uint8_t keyType = (t.sectors[e_sector].foundKeyA ? MC_AUTH_A : MC_AUTH_B);
-            uint8_t *key = (t.sectors[e_sector].foundKeyA ? t.sectors[e_sector].KeyA : t.sectors[e_sector].KeyB);;
-            uint8_t trgBlockNo = sector_to_block(j); //block
-            uint8_t trgKeyType = (dumpKeysA ? MC_AUTH_A : MC_AUTH_B);
-            mfnestedhard(blockNo, keyType, key, trgBlockNo, trgKeyType);
-            did_hardnested=true;
-            goto check_keys;
-        } else {
-            //Nested attack
-            // DSR! - fix https://github.com/vk496/mfoc/issues/4
-            mf_configure(r.pdi);
-            mf_anticollision(t, r);
-          
-            // Max probes for auth for each sector
-            for (k = 0; k < probes; ++k) {
-              // Try to authenticate to exploit sector and determine distances (filling denonce.distances)
-              mf_enhanced_auth(e_sector, 0, t, r, &d, pk, 'd', dumpKeysA, 0, 0); // AUTH + Get Distances mode
-              printf("Sector: %d, type %c, probe %d, distance %d ", j, (dumpKeysA ? 'A' : 'B'), k, d.median);
-              // Configure device to the previous state
-              mf_configure(r.pdi);
-              mf_anticollision(t, r);
+        mf_configure(r.pdi);
+        mf_anticollision(t, r);
+        
+        uint8_t blockNo = sector_to_block(e_sector); //Block
+        uint8_t keyType = (t.sectors[e_sector].foundKeyA ? MC_AUTH_A : MC_AUTH_B);
+        uint8_t *key = (t.sectors[e_sector].foundKeyA ? t.sectors[e_sector].KeyA : t.sectors[e_sector].KeyB);;
+        uint8_t trgBlockNo = sector_to_block(j); //block
+        uint8_t trgKeyType = (dumpKeysA ? MC_AUTH_A : MC_AUTH_B);
+        mfnestedhard(blockNo, keyType, key, trgBlockNo, trgKeyType);
+        did_hardnested=true;
+        goto check_keys;
 
-              pk->possibleKeys = NULL;
-              pk->size = 0;
-              // We have 'sets' * 32b keystream of potential keys
-              for (n = 0; n < sets; n++) {
-                // AUTH + Recovery key mode (for a_sector), repeat 5 times
-                mf_enhanced_auth(e_sector, t.sectors[j].trailer, t, r, &d, pk, 'r', dumpKeysA, 0, 0);
-                mf_configure(r.pdi);
-                mf_anticollision(t, r);
-                fprintf(stdout, ".");
-                fflush(stdout);
-              }
-              fprintf(stdout, "\n");
-              // Get first 15 grouped keys
-              ck = uniqsort(pk->possibleKeys, pk->size);
-              for (i = 0; i < TRY_KEYS ; i++) {
-                // We don't known this key, try to break it
-                // This key can be found here two or more times
-                if (ck[i].count > 0) {
-                  fprintf(stdout,"%d %llx\n",ck[i].count, ck[i].key);
-                  // Set required authetication method
-                  num_to_bytes(ck[i].key, 6, mp.mpa.abtKey);
-                  mc = dumpKeysA ? MC_AUTH_A : MC_AUTH_B;
-                  int res;
-                  if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, mc, t.sectors[j].trailer, &mp)) < 0) {
-                    if (res != NFC_EMFCAUTHFAIL) {
-                      nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                      return false;
-                    }
-                    mf_anticollision(t, r);
-                  } else {
-                    // Save all information about successfull authentization
-                    bk->size++;
-                    bk->brokenKeys = (uint64_t *) realloc((void *)bk->brokenKeys, bk->size * sizeof(uint64_t));
-                    bk->brokenKeys[bk->size - 1] = bytes_to_num(mp.mpa.abtKey, sizeof(mp.mpa.abtKey));
-                    if (dumpKeysA) {
-                      memcpy(t.sectors[j].KeyA, mp.mpa.abtKey, sizeof(mp.mpa.abtKey));
-                      t.sectors[j].foundKeyA = true;
-
-                    } else {
-                      memcpy(t.sectors[j].KeyB, mp.mpa.abtKey, sizeof(mp.mpa.abtKey));
-                      t.sectors[j].foundKeyB = true;
-                    }
-                    fprintf(stdout, "  Found Key: %c [%012llx]\n", (dumpKeysA ? 'A' : 'B'),
-                            bytes_to_num(mp.mpa.abtKey, 6));
-                    // if we need KeyB for this sector, it should be revealed by a data read with KeyA
-                    if (!t.sectors[j].foundKeyB) {
-                      if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, t.sectors[j].trailer, &mtmp)) >= 0) {
-                        fprintf(stdout, "  Data read with Key A revealed Key B: [%012llx] - checking Auth: ", bytes_to_num(mtmp.mpd.abtData + 10, sizeof(mtmp.mpa.abtKey)));
-                        memcpy(mtmp.mpa.abtKey, mtmp.mpd.abtData + 10, sizeof(mtmp.mpa.abtKey));
-                        memcpy(mtmp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mtmp.mpa.abtAuthUid));
-                        if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, t.sectors[j].trailer, &mtmp)) < 0) {
-                          fprintf(stdout, "Failed!\n");
-                          mf_configure(r.pdi);
-                          mf_anticollision(t, r);
-                        } else {
-                          fprintf(stdout, "OK\n");
-                          memcpy(t.sectors[j].KeyB, mtmp.mpd.abtData + 10, sizeof(t.sectors[j].KeyB));
-                          t.sectors[j].foundKeyB = true;
-                          bk->size++;
-                          bk->brokenKeys = (uint64_t *) realloc((void *)bk->brokenKeys, bk->size * sizeof(uint64_t));
-                          bk->brokenKeys[bk->size - 1] = bytes_to_num(mtmp.mpa.abtKey, sizeof(mtmp.mpa.abtKey));
-                        }
-                      } else {
-                          if (res != NFC_ERFTRANS) {
-                            nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-                            return false;
-                          }
-                        mf_anticollision(t, r);
-                      }
-                    }
-                    mf_configure(r.pdi);
-                    mf_anticollision(t, r);
-                    break;
-                  }
-                }
-              }
-              free(pk->possibleKeys);
-              free(ck);
-              // Success, try the next sector
-              if ((dumpKeysA && t.sectors[j].foundKeyA) || (!dumpKeysA && t.sectors[j].foundKeyB)) break;
-            }
-        }
         // We haven't found any key, exiting
         if ((dumpKeysA && !t.sectors[j].foundKeyA) || (!dumpKeysA && !t.sectors[j].foundKeyB)) {
           ERR("No success, maybe you should increase the probes");
@@ -1410,325 +1275,6 @@ get_rats_is_2k(mftag t, mfreader r)
   }
 }
 
-int mf_enhanced_auth(int e_sector, int a_sector, mftag t, mfreader r, denonce *d, pKeys *pk, char mode, bool dumpKeysA, uint32_t *NtEncBytes, uint8_t* parBits)
-{
-  struct Crypto1State *pcs;
-  struct Crypto1State *revstate;
-  struct Crypto1State *revstate_start;
-
-  uint64_t lfsr;
-
-  // Possible key counter, just continue with a previous "session"
-  uint32_t kcount = pk->size;
-
-  uint8_t Nr[4] = { 0x00, 0x00, 0x00, 0x00 }; // Reader nonce
-  uint8_t Auth[4] = { 0x00, t.sectors[e_sector].trailer, 0x00, 0x00 };
-  uint8_t AuthEnc[4] = { 0x00, t.sectors[e_sector].trailer, 0x00, 0x00 };
-  
-  if (mode == 'h') {
-    memset(Auth, 0, 4);
-    memset(AuthEnc, 0, 4);
-  }
-  
-  uint8_t AuthEncPar[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-  uint8_t ArEnc[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-  uint8_t ArEncPar[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-  uint8_t Rx[MAX_FRAME_LEN]; // Tag response
-  uint8_t RxPar[MAX_FRAME_LEN]; // Tag response
-
-  uint32_t Nt, NtLast, NtProbe, NtEnc, Ks1;
-
-  int res;
-  uint32_t m, i;
-  uint8_t pbits = 0, p;
-
-  // Prepare AUTH command
-  Auth[0] = (t.sectors[e_sector].foundKeyA) ? MC_AUTH_A : MC_AUTH_B;
-  if (mode == 'h') {
-    Auth[1] = sector_to_block(e_sector); //block
-  }
-  iso14443a_crc_append(Auth, 2);
-  //fprintf(stdout, "\nMode: %c, Auth command:\t", mode);
-  //print_hex(Auth, 4);
-
-  // We need full control over the CRC
-  if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, false) < 0)  {
-    nfc_perror(r.pdi, "nfc_device_set_property_bool crc");
-    exit(EXIT_FAILURE);
-  }
-
-  // Request plain tag-nonce
-  // TODO: Set NP_EASY_FRAMING option only once if possible
-  if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
-    nfc_perror(r.pdi, "nfc_device_set_property_bool framing");
-    exit(EXIT_FAILURE);
-  }
-
-  if ((res = nfc_initiator_transceive_bytes(r.pdi, Auth, 4, Rx, sizeof(Rx), 0)) < 0) {
-    fprintf(stdout, "Error while requesting plain tag-nonce, %d\n", res);
-    exit(EXIT_FAILURE);
-  }
-
-  if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, true) < 0) {
-    nfc_perror(r.pdi, "nfc_device_set_property_bool");
-    exit(EXIT_FAILURE);
-  }
-  //print_hex(Rx, res);
-
-  // Save the tag nonce (Nt)
-  Nt = bytes_to_num(Rx, res);
-
-  // Init the cipher with key {0..47} bits
-  if (t.sectors[e_sector].foundKeyA) {
-    pcs = crypto1_create(bytes_to_num(t.sectors[e_sector].KeyA, 6));
-  } else {
-    pcs = crypto1_create(bytes_to_num(t.sectors[e_sector].KeyB, 6));
-  }
-
-  // Load (plain) uid^nt into the cipher {48..79} bits
-  crypto1_word(pcs, bytes_to_num(Rx, res) ^ t.authuid, 0);
-
-  // Generate (encrypted) nr+parity by loading it into the cipher
-  for (i = 0; i < 4; i++) {
-    // Load in, and encrypt the reader nonce (Nr)
-    ArEnc[i] = crypto1_byte(pcs, Nr[i], 0) ^ Nr[i];
-    ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nr[i]);
-  }
-  // Skip 32 bits in the pseudo random generator
-  Nt = prng_successor(Nt, 32);
-  // Generate reader-answer from tag-nonce
-  for (i = 4; i < 8; i++) {
-    // Get the next random byte
-    Nt = prng_successor(Nt, 8);
-    // Encrypt the reader-answer (Nt' = suc2(Nt))
-    ArEnc[i] = crypto1_byte(pcs, 0x00, 0) ^(Nt & 0xff);
-    ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nt);
-  }
-
-  // Finally we want to send arbitrary parity bits
-  if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, false) < 0) {
-    nfc_perror(r.pdi, "nfc_device_set_property_bool parity");
-    exit(EXIT_FAILURE);
-  }
-
-  // Transmit reader-answer
-  //fprintf(stdout, "\t{Ar}:\t");
-  //print_hex_par(ArEnc, 64, ArEncPar);
-  if (((res = nfc_initiator_transceive_bits(r.pdi, ArEnc, 64, ArEncPar, Rx, sizeof(Rx), RxPar)) < 0) || (res != 32)) {
-    ERR("Reader-answer transfer error, exiting..");
-    exit(EXIT_FAILURE);
-  }
-
-  // Now print the answer from the tag
-  //fprintf(stdout, "\t{At}:\t");
-  //print_hex_par(Rx,res,RxPar);
-
-  // Decrypt the tag answer and verify that suc3(Nt) is At
-  Nt = prng_successor(Nt, 32);
-  if (!((crypto1_word(pcs, 0x00, 0) ^ bytes_to_num(Rx, 4)) == (Nt & 0xFFFFFFFF))) {
-    ERR("[At] is not Suc3(Nt), something is wrong, exiting..");
-    exit(EXIT_FAILURE);
-  }
-  //fprintf(stdout, "Authentication completed.\n\n");
-
-  // If we are in "Get Distances" mode
-  if (mode == 'd') {
-    for (m = 0; m < d->num_distances; m++) {
-      fprintf(stdout, "Nested Auth number: %x\n", m);
-      // Encrypt Auth command with the current keystream
-      for (i = 0; i < 4; i++) {
-        AuthEnc[i] = crypto1_byte(pcs, 0x00, 0) ^ Auth[i];
-        // Encrypt the parity bits with the 4 plaintext bytes
-        AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Auth[i]);
-      }
-
-      fprintf(stdout, "\t{AuthEnc}:\t");
-      print_hex_par(AuthEnc, 64, AuthEncPar);
-
-      // Sending the encrypted Auth command
-      if ((res = nfc_initiator_transceive_bits(r.pdi, AuthEnc, 32, AuthEncPar, Rx, sizeof(Rx), RxPar)) < 0) {
-        fprintf(stdout, "Error requesting encrypted tag-nonce\n");
-        exit(EXIT_FAILURE);
-      }
-
-      fprintf(stdout, "\t{AuthEnResp}:\t");
-      print_hex_par(Rx,res,RxPar);
-
-      // Decrypt the encrypted auth
-      if (t.sectors[e_sector].foundKeyA) {
-        pcs = crypto1_create(bytes_to_num(t.sectors[e_sector].KeyA, 6));
-      } else {
-        pcs = crypto1_create(bytes_to_num(t.sectors[e_sector].KeyB, 6));
-      }
-      NtLast = bytes_to_num(Rx, 4) ^ crypto1_word(pcs, bytes_to_num(Rx, 4) ^ t.authuid, 1);
-
-      // Make sure the card is using the known PRNG
-      if (! validate_prng_nonce(NtLast)) {
-           printf("Card is not vulnerable to nested attack\n");
-           return -99999;
-      }
-      // Save the determined nonces distance
-      d->distances[m] = nonce_distance(Nt, NtLast);
-
-      // Again, prepare and send {At}
-      for (i = 0; i < 4; i++) {
-        ArEnc[i] = crypto1_byte(pcs, Nr[i], 0) ^ Nr[i];
-        ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nr[i]);
-      }
-      Nt = prng_successor(NtLast, 32);
-      for (i = 4; i < 8; i++) {
-        Nt = prng_successor(Nt, 8);
-        ArEnc[i] = crypto1_byte(pcs, 0x00, 0) ^(Nt & 0xFF);
-        ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nt);
-      }
-      nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, false);
-
-      // Transmit reader-answer
-      fprintf(stdout, "\t{Ar}:\t");
-      print_hex_par(ArEnc, 64, ArEncPar);
-
-      if (((res = nfc_initiator_transceive_bits(r.pdi, ArEnc, 64, ArEncPar, Rx, sizeof(Rx), RxPar)) < 0) || (res != 32)) {
-        ERR("Reader-answer transfer error, exiting..");
-        exit(EXIT_FAILURE);
-      }
-      Nt = prng_successor(Nt, 32);
-      if (!((crypto1_word(pcs, 0x00, 0) ^ bytes_to_num(Rx, 4)) == (Nt & 0xFFFFFFFF))) {
-        ERR("[At] is not Suc3(Nt), something is wrong, exiting..");
-        exit(EXIT_FAILURE);
-      }
-
-        // Now print the answer from the tag
-        fprintf(stdout, "\t{At}:\t");
-        print_hex_par(Rx,res,RxPar);
-    } // Next auth probe
-
-    // Find median from all distances
-    d->median = median(*d);
-    fprintf(stdout, "Median: %05d\n", d->median);
-  } // The end of Get Distances mode
-
-  // If we are in "Get Recovery" mode
-  if (mode == 'r') {
-    // Again, prepare the Auth command with MC_AUTH_A, recover the block and CRC
-    Auth[0] = dumpKeysA ? MC_AUTH_A : MC_AUTH_B;
-    Auth[1] = a_sector;
-    iso14443a_crc_append(Auth, 2);
-
-    // Encryption of the Auth command, sending the Auth command
-    for (i = 0; i < 4; i++) {
-      AuthEnc[i] = crypto1_byte(pcs, 0x00, 0) ^ Auth[i];
-      // Encrypt the parity bits with the 4 plaintext bytes
-      AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Auth[i]);
-    }
-    if (nfc_initiator_transceive_bits(r.pdi, AuthEnc, 32, AuthEncPar, Rx, sizeof(Rx), RxPar) < 0) {
-      ERR("while requesting encrypted tag-nonce");
-      exit(EXIT_FAILURE);
-    }
-
-    // Finally we want to send arbitrary parity bits
-    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true) < 0)  {
-      nfc_perror(r.pdi, "nfc_device_set_property_bool parity restore M");
-      exit(EXIT_FAILURE);
-    }
-
-    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true) < 0)  {
-      nfc_perror(r.pdi, "nfc_device_set_property_bool crc restore M");
-      exit(EXIT_FAILURE);
-    }
-
-    // Save the encrypted nonce
-    NtEnc = bytes_to_num(Rx, 4);
-
-    // Parity validity check
-    for (i = 0; i < 3; ++i) {
-      d->parity[i] = (oddparity(Rx[i]) != RxPar[i]);
-    }
-
-    // Iterate over Nt-x, Nt+x
-    fprintf(stdout, "Iterate from %d to %d\n", d->median-d->tolerance, d->median+d->tolerance);
-    NtProbe = prng_successor(Nt, d->median - d->tolerance);
-    for (m = d->median - d->tolerance; m <= d->median + d->tolerance; m += 2) {
-
-      // Try to recover the keystream1
-      Ks1 = NtEnc ^ NtProbe;
-
-      // Skip this nonce after invalid 3b parity check
-      revstate_start = NULL;
-      if (valid_nonce(NtProbe, NtEnc, Ks1, d->parity)) {
-        // And finally recover the first 32 bits of the key
-        revstate = lfsr_recovery32(Ks1, NtProbe ^ t.authuid);
-        if (revstate_start == NULL) {
-          revstate_start = revstate;
-        }
-        while ((revstate->odd != 0x0) || (revstate->even != 0x0)) {
-          lfsr_rollback_word(revstate, NtProbe ^ t.authuid, 0);
-          crypto1_get_lfsr(revstate, &lfsr);
-          // Allocate a new space for keys
-          if (((kcount % MEM_CHUNK) == 0) || (kcount >= pk->size)) {
-            pk->size += MEM_CHUNK;
-            fprintf(stdout, "New chunk by %d, sizeof %llu\n", kcount, pk->size * sizeof(uint64_t));
-            pk->possibleKeys = (uint64_t *) realloc((void *)pk->possibleKeys, pk->size * sizeof(uint64_t));
-            if (pk->possibleKeys == NULL) {
-              ERR("Memory allocation error for pk->possibleKeys");
-              exit(EXIT_FAILURE);
-            }
-          }
-          pk->possibleKeys[kcount] = lfsr;
-          kcount++;
-          revstate++;
-        }
-        free(revstate_start);
-      }
-      NtProbe = prng_successor(NtProbe, 2);
-    }
-    // Truncate
-    if (kcount != 0) {
-      pk->size = --kcount;
-      if ((pk->possibleKeys = (uint64_t *) realloc((void *)pk->possibleKeys, pk->size * sizeof(uint64_t))) == NULL) {
-        ERR("Memory allocation error for pk->possibleKeys");
-        exit(EXIT_FAILURE);
-      }
-    }
-  }
-
-  if (mode == 'h') {
-    // Again, prepare the Auth command with MC_AUTH_A, recover the block and CRC
-    Auth[0] = dumpKeysA ? MC_AUTH_A : MC_AUTH_B;
-    Auth[1] = a_sector * 4; //block
-    iso14443a_crc_append(Auth, 2);
-
-    // Encryption of the Auth command, sending the Auth command
-    for (i = 0; i < 4; i++) {
-        AuthEnc[i] = crypto1_byte(pcs, 0, 0) ^ Auth[i];
-        // Encrypt the parity bits with the 4 plaintext bytes
-        AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Auth[i]);
-    }
-    if ((( res = nfc_initiator_transceive_bits(r.pdi, AuthEnc, 32, AuthEncPar, Rx, sizeof (Rx), RxPar)) < 0) || (res != 32)){
-        ERR("while requesting encrypted tag-nonce");
-        exit(EXIT_FAILURE);
-    }
-    
-    // Save the encrypted nonce
-    NtEnc = bytes_to_num(Rx, 4);
-      
-    for (i = 0; i < 4; i++) {
-        p = oddparity(Rx[i]);
-        if (RxPar[i] != oddparity(Rx[i])) {
-            p ^= 1;
-        }
-        pbits <<= 1;
-        pbits |= p;
-    }
-    *NtEncBytes = NtEnc;
-    *parBits = pbits;
-      
-  }
-  
-  crypto1_destroy(pcs);
-  return 0;
-}
 
 // Return the median value from the nonce distances array
 uint32_t median(denonce d)
@@ -1755,35 +1301,6 @@ int compar_special_int(const void *a, const void *b)
 {
   return (((countKeys *)b)->count - ((countKeys *)a)->count);
 }
-
-countKeys *uniqsort(uint64_t *possibleKeys, uint32_t size)
-{
-  unsigned int i, j = 0;
-  int count = 0;
-  countKeys *our_counts;
-
-  qsort(possibleKeys, size, sizeof(uint64_t), compar_int);
-
-  our_counts = calloc(size, sizeof(countKeys));
-  if (our_counts == NULL) {
-    ERR("Memory allocation error for our_counts");
-    exit(EXIT_FAILURE);
-  }
-
-  for (i = 0; i < size; i++) {
-    if (possibleKeys[i + 1] == possibleKeys[i]) {
-      count++;
-    } else {
-      our_counts[j].key = possibleKeys[i];
-      our_counts[j].count = count;
-      j++;
-      count = 0;
-    }
-  }
-  qsort(our_counts, j, sizeof(countKeys), compar_special_int);
-  return (our_counts);
-}
-
 
 // Return 1 if the nonce is invalid else return 0
 int valid_nonce(uint32_t Nt, uint32_t NtEnc, uint32_t Ks1, uint8_t *parity)

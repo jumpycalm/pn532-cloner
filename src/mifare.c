@@ -230,3 +230,15 @@ mfoc_nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_
   // Command succesfully executed
   return NFC_SUCCESS;
 }
+
+// Sectors 0 to 31 have 4 blocks per sector.
+// Sectors 32 to 39 have 16 blocks per sector.
+uint8_t sector_to_block(uint8_t sector)
+{
+  if (sector<32) {
+    return sector<<2;
+  }
+  sector -= 32;
+
+  return 128+(sector<<4);
+}

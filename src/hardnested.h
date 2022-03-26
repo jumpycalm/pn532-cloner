@@ -5,15 +5,14 @@
 // at your option, any later version. See the LICENSE.txt file for the text of
 // the license.
 //-----------------------------------------------------------------------------
-// hf mf hardnested command
+// hardnested functions
 //-----------------------------------------------------------------------------
 
-#ifndef CMDHFMFHARD_H__
-#define CMDHFMFHARD_H__
+#ifndef HARDNESTED_H__
+#define HARDNESTED_H__
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "main.h"
 
 #define NUM_SUMS       19  // number of possible sum property values
 

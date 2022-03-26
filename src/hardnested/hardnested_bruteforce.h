@@ -19,8 +19,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../cmdhfmfhard.h"
-#include "../main.h"
+#include "../hardnested.h"
 
 typedef struct {
     uint32_t *states[2];

@@ -10,7 +10,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
 set(SOURCES
-    cmdhfmfhard.c
     crapto1.c
     crypto1.c
     getopt.c
@@ -31,6 +30,7 @@ set(SOURCES
     uart.c
     util_posix.c
     util.c
+    hardnested.c
     hardnested/hardnested_bf_core.c
     hardnested/hardnested_bitarray_core.c
     hardnested/hardnested_bruteforce.c

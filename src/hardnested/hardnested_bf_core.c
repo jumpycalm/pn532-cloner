@@ -1,4 +1,5 @@
 #include "hardnested_bf_core.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <malloc.h>
 #include "../crapto1.h"

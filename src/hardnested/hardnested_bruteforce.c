@@ -58,6 +58,7 @@ THE SOFTWARE.
 #include "../parity.h"
 #include "../mifare.h"
 #include "../bf_bench_data.h"
+#include "../main.h" // Accessing t
 
 #define DEFAULT_BRUTE_FORCE_RATE  (120000000.0)  // if benchmark doesn't succeed
 #define TEST_BENCH_SIZE     (6000)    // number of odd and even states for brute force benchmark

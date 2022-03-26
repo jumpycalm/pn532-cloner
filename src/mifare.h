@@ -289,4 +289,6 @@ typedef union {
 // Reset struct alignment to default
 #  pragma pack()
 
+uint8_t sector_to_block(uint8_t sector);
+
 #endif // _LIBNFC_MIFARE_H_
