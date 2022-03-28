@@ -1392,7 +1392,7 @@ static int mf_enhanced_auth(int e_sector, int a_sector, mftag t, mfreader r, den
   return 0;
 }
 
-static int acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType) {
+static bool acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType) {
     last_sample_clock = msclock();
     sample_period = 2000; // initial rough estimate. Will be refined.
     hardnested_stage = CHECK_1ST_BYTES;
@@ -1415,7 +1415,8 @@ static int acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_
         mf_enhanced_auth(e_sector, a_sector, t, r, 0, &pk, 'h', dumpKeysA, &enc_bytes, &parbits);
         
         mf_configure(r.pdi);
-        mf_anticollision(t, r);
+        if (!mf_anticollision(t, r))
+            return false;
         
         num_acquired_nonces += add_nonce(enc_bytes, parbits);
         if (first_byte_num == 256) {
@@ -1452,7 +1453,7 @@ static int acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_
     } while (!acquisition_completed);
     nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
     nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
-    return 0;
+    return true;
 }
 
 
@@ -2036,7 +2037,7 @@ static void set_test_state(uint8_t byte) {
 }
 
 
-int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType) {
+bool mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType) {
     
     targetBLOCK = trgBlockNo;
     targetKEY = trgKeyType;
@@ -2060,15 +2061,14 @@ int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBloc
     init_nonce_memory();
     update_reduction_rate(0.0, true);
 
-    uint16_t is_OK = acquire_nonces(blockNo, keyType, key, trgBlockNo, trgKeyType);
-    if (is_OK != 0) {
+    if (!acquire_nonces(blockNo, keyType, key, trgBlockNo, trgKeyType)) {
 		free_bitflip_bitarrays();
         free_nonces_memory();
         FREE_BITARRAY(all_bitflips_bitarray[ODD_STATE]);
         FREE_BITARRAY(all_bitflips_bitarray[EVEN_STATE]);
         free_sum_bitarrays();
         free_part_sum_bitarrays();
-        return is_OK;
+        return false;
     }
 
     known_target_key = -1;
@@ -2128,5 +2128,5 @@ int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBloc
     FREE_BITARRAY(all_bitflips_bitarray[EVEN_STATE]);
     free_sum_bitarrays();
     free_part_sum_bitarrays();
-    return 0;
+    return true;
 }

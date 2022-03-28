@@ -62,8 +62,8 @@ typedef struct {
   nfc_target	 nt;
   sector         *sectors;                // Allocate later, we do not know the number of sectors yet
   sector         e_sector;		// Exploit sector
-  uint8_t        num_sectors;
-  uint8_t        num_blocks;
+  uint8_t        num_sectors; // Actual total number of sectors, for example for 4K, it's 40
+  uint8_t        num_blocks;  // Max block num, for example for 4K, it's 255
   uint32_t       authuid;
 } mftag;
 
@@ -89,15 +89,15 @@ typedef struct {
 
 extern mftag        t;
 extern mfreader    r;
+extern uint8_t hardnested_broken_key[6];
 
 
 void usage(FILE *stream, uint8_t errnr);
 bool mf_init(mfreader *r);
 void mf_configure(nfc_device *pdi);
 void mf_select_tag(nfc_device *pdi, nfc_target *pnt);
-int trailer_block(uint32_t block);
 int find_exploit_sector(mftag t);
-void mf_anticollision(mftag t, mfreader r);
+bool mf_anticollision(mftag t, mfreader r);
 bool get_rats_is_2k(mftag t, mfreader r);
 uint32_t median(denonce d);
 int compar_int(const void *a, const void *b);
@@ -106,10 +106,12 @@ int compar_special_int(const void *a, const void *b);
 void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest);
 long long unsigned int bytes_to_num(uint8_t *src, uint32_t len);
 
+int8_t test_keys(mifare_param *mp);
 bool if_tag_is_blank(nfc_iso14443a_info tag_info);
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid);
+uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num);
 bool is_first_block(uint32_t uiBlock);
-bool is_trailer_block(uint32_t uiBlock);
+bool is_trailer_block(uint32_t block);
 void sanitize_mfc_buffer(void);
 bool write_blank_mfc(bool write_block_zero);
 bool clean_mfc(bool force);
