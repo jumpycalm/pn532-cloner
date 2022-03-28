@@ -65,7 +65,7 @@
 #define MAX_FRAME_LEN 264
 #define MAX_FILE_LEN 22 // 3 leading chars as type, followed by up to 7-byte UID (14 chars), followed by .bin and ending char (5 chars)
 
-#define PN532_CLONER_VER "0.0.1"
+#define PN532_CLONER_VER "0.1.0"
 
 mftag    t;
 mfreader r;
