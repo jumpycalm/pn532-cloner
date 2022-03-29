@@ -94,9 +94,8 @@ extern uint8_t hardnested_broken_key[6];
 
 void usage(FILE *stream, uint8_t errnr);
 bool mf_init(mfreader *r);
-void mf_configure(nfc_device *pdi);
-void mf_select_tag(nfc_device *pdi, nfc_target *pnt);
-int find_exploit_sector(mftag t);
+bool mf_configure(nfc_device *pdi);
+bool mf_select_tag(nfc_device *pdi, nfc_target *pnt);
 bool mf_anticollision(mftag t, mfreader r);
 bool get_rats_is_2k(mftag t, mfreader r);
 uint32_t median(denonce d);

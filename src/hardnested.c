@@ -134,7 +134,8 @@ uint32_t* get_bitflip_data(odd_even_t odd_even, uint16_t bitflip) {
 
         uint32_t count = 0;
 
-        lzma_init_inflate(&strm, p.input_buffer, p.len, (uint8_t*) & count, sizeof (count));
+        if (!lzma_init_inflate(&strm, p.input_buffer, p.len, (uint8_t*) & count, sizeof (count)))
+            return NULL;
         if ((float) count / (1 << 24) < IGNORE_BITFLIP_THRESHOLD) {
             uint32_t *bitset = (uint32_t *) MALLOC_BITARRAY(sizeof (uint32_t) * (1 << 19));
             if (bitset == NULL) {
@@ -259,7 +260,7 @@ static int compare_count_bitflip_bitarrays(const void *b1, const void *b2) {
 }
 
 
-static void init_bitflip_bitarrays(void) {
+static bool init_bitflip_bitarrays(void) {
 
     //	z_stream compressed_stream;
     lzma_stream strm = LZMA_STREAM_INIT;
@@ -276,7 +277,8 @@ static void init_bitflip_bitarrays(void) {
                 uint32_t count = 0;
                 bitflips_available[odd_even][bitflip] = true;
 
-                lzma_init_inflate(&strm, p.input_buffer, p.len, (uint8_t*)&count, sizeof(count));
+                if (!lzma_init_inflate(&strm, p.input_buffer, p.len, (uint8_t*)&count, sizeof(count)))
+                    return false;
                 if ((float)count / (1 << 24) < IGNORE_BITFLIP_THRESHOLD) {
                     uint32_t *bitset = (uint32_t *)MALLOC_BITARRAY(sizeof(uint32_t) * (1 << 19));
                     if (bitset == NULL) {
@@ -327,6 +329,7 @@ static void init_bitflip_bitarrays(void) {
     char progress_text[80];
     sprintf(progress_text, "Using %d precalculated bitflip state tables", num_all_effective_bitflips);
     hardnested_print_progress(0, progress_text, (float) (1LL << 47), 0, targetBLOCK, targetKEY, true);
+    return true;
 }
 
 
@@ -1414,7 +1417,8 @@ static bool acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8
         nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
         mf_enhanced_auth(e_sector, a_sector, t, r, 0, &pk, 'h', dumpKeysA, &enc_bytes, &parbits);
         
-        mf_configure(r.pdi);
+        if (!mf_configure(r.pdi))
+            return false;
         if (!mf_anticollision(t, r))
             return false;
         
@@ -2054,7 +2058,8 @@ bool mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlo
     print_progress_header();
     //sprintf(progress_text, "Brute force benchmark: %1.0f million (2^%1.1f) keys/s", brute_force_per_second / 1000000, log(brute_force_per_second) / log(2.0));
     //hardnested_print_progress(0, progress_text, (float) (1LL << 47), 0, targetBLOCK, targetKEY, true);
-    init_bitflip_bitarrays();
+    if (!init_bitflip_bitarrays())
+        return false;
     init_part_sum_bitarrays();
     init_sum_bitarrays();
     init_allbitflips_array();

@@ -189,7 +189,8 @@ int8_t test_keys(mifare_param *mp)
 
           memcpy(mp->mpa.abtKey, mp_tmp.mpd.abtData + 10, sizeof(mp_tmp.mpa.abtKey));
           if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, mp)) < 0) {
-            mf_configure(r.pdi);
+            if (!mf_configure(r.pdi))
+              return -1;
             if (!mf_anticollision(t, r))
               return -1;
           } else {
@@ -325,7 +326,8 @@ bool write_blank_mfc(bool write_block_zero)
   // Failure to do so may brick the tag if loading a dump file not from this application
   sanitize_mfc_buffer();
 
-  mf_configure(r.pdi);
+  if (!mf_configure(r.pdi))
+    return false;
 
   if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
     printf("Error: tag was removed\n");
@@ -411,7 +413,8 @@ bool read_mfc()
 
   last_read_mfc_type = MFC_TYPE_INVALID; // Always assume read is failed before performing the read
 
-  mf_configure(r.pdi);
+  if (!mf_configure(r.pdi))
+    return false;
 
   int tag_count;
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
@@ -559,7 +562,8 @@ bool read_mfc()
 
   for (i = 0; i < t.num_sectors; i++) {
     if (!t.sectors[i].foundKeyA) {
-      mf_configure(r.pdi);
+      if (!mf_configure(r.pdi))
+        goto out;
       if (!mf_anticollision(t, r))
           goto out;
       if (!mfnestedhard(hardnested_src_block, hardnested_src_key_type, hardnested_src_key, get_trailer_block_num_from_sector_num(i), MC_AUTH_A))
@@ -575,7 +579,8 @@ bool read_mfc()
     }
 
     if (!t.sectors[i].foundKeyB) {
-      mf_configure(r.pdi);
+      if (!mf_configure(r.pdi))
+        goto out;
       if (!mf_anticollision(t, r))
           goto out;
       if (!mfnestedhard(hardnested_src_block, hardnested_src_key_type, hardnested_src_key, get_trailer_block_num_from_sector_num(i), MC_AUTH_B))
@@ -610,22 +615,26 @@ read_tag:
         nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
         goto out;
       }
-      mf_configure(r.pdi);
+      if (!mf_configure(r.pdi))
+        goto out;
       if (!mf_anticollision(t, r))
         goto out;
     } else { // and Read
       if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) >= 0) {
         fprintf(stdout, "Block %02d, type %c, key %012llx :", block, 'A', bytes_to_num(t.sectors[i].KeyA, 6));
         print_hex(mp.mpd.abtData, 16);
-        mf_configure(r.pdi);
-        mf_select_tag(r.pdi, &(t.nt));
+        if (!mf_configure(r.pdi))
+          goto out;
+        if (!mf_select_tag(r.pdi, &(t.nt)))
+          goto out;
       } else {
         // Error, now try read() with B key
         if (res != NFC_ERFTRANS) {
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
           goto out;
         }
-        mf_configure(r.pdi);
+        if (!mf_configure(r.pdi))
+          goto out;
         if (!mf_anticollision(t, r))
           goto out;
         memcpy(mp.mpa.abtKey, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
@@ -634,21 +643,25 @@ read_tag:
             nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
             goto out;
           }
-          mf_configure(r.pdi);
+          if (!mf_configure(r.pdi))
+            goto out;
           if (!mf_anticollision(t, r))
             goto out;
         } else { // and Read
           if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) >= 0) {
             fprintf(stdout, "Block %02d, type %c, key %012llx :", block, 'B', bytes_to_num(t.sectors[i].KeyB, 6));
             print_hex(mp.mpd.abtData, 16);
-            mf_configure(r.pdi);
-            mf_select_tag(r.pdi, &(t.nt));
+            if (!mf_configure(r.pdi))
+              goto out;
+            if (!mf_select_tag(r.pdi, &(t.nt)))
+              goto out;
           } else {
             if (res != NFC_ERFTRANS) {
               nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
               return false;
             }
-            mf_configure(r.pdi);
+            if (!mf_configure(r.pdi))
+              goto out;
             if (!mf_anticollision(t, r))
               goto out;
             // ERR ("Error: Read B");
@@ -799,7 +812,8 @@ bool write_mfc(bool force, char *file_name)
     }
   }
 
-  mf_configure(r.pdi);
+  if (!mf_configure(r.pdi))
+    return false;
   
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
@@ -847,7 +861,8 @@ bool write_mfc(bool force, char *file_name)
     memcpy(abtCmd + 5, last_read_uid, 7);
     memcpy(abtCmd + 5 + 14, "\xe1\xe2", 2);
 
-    mf_configure(r.pdi);
+    if (!mf_configure(r.pdi))
+      return false;
   
     if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
       nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
@@ -896,7 +911,8 @@ bool clean_mfc(bool force)
   uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
   uint8_t abtRx[16]={0};
 
-  mf_configure(r.pdi);
+  if (!mf_configure(r.pdi))
+    return false;
   
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
@@ -931,7 +947,8 @@ bool clean_mfc(bool force)
     memcpy(abtCmd, "\x90\xf0\xcc\xcc\x10", 5);
     memcpy(abtCmd + 5 + 14, "\xe1\xe2", 2);
 
-    mf_configure(r.pdi);
+    if (!mf_configure(r.pdi))
+      return false;
   
     if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
       nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
@@ -1023,83 +1040,53 @@ bool mf_init(mfreader *r)
   return true;
 }
 
-void mf_configure(nfc_device *pdi)
+bool mf_configure(nfc_device *pdi)
 {
   if (nfc_initiator_init(pdi) < 0) {
-    nfc_perror(pdi, "nfc_initiator_init");
-    exit(EXIT_FAILURE);
+    printf("nfc_initiator_init\n");
+    return false;
   }
   // Drop the field for a while, so can be reset
   if (nfc_device_set_property_bool(pdi, NP_ACTIVATE_FIELD, false) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool activate field");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool activate field\n");
+    return false;
   }
   // Let the reader only try once to find a tag
   if (nfc_device_set_property_bool(pdi, NP_INFINITE_SELECT, false) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool infinite select");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool infinite select\n");
+    return false;
   }
   // Configure the CRC and Parity settings
   if (nfc_device_set_property_bool(pdi, NP_HANDLE_CRC, true) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool crc");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool crc\n");
+    return false;
   }
   if (nfc_device_set_property_bool(pdi, NP_HANDLE_PARITY, true) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool parity");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool parity\n");
+    return false;
   }
   // Disable ISO14443-4 switching in order to read devices that emulate Mifare Classic with ISO14443-4 compliance.
   if (nfc_device_set_property_bool(pdi, NP_AUTO_ISO14443_4, false) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool\n");
+    return false;
   }
   // Enable the field so more power consuming cards can power themselves up
   if (nfc_device_set_property_bool(pdi, NP_ACTIVATE_FIELD, true) < 0) {
-    nfc_perror(pdi, "nfc_device_set_property_bool activate field");
-    exit(EXIT_FAILURE);
+    printf("nfc_device_set_property_bool activate field\n");
+    return false;
   }
+  return true;
 }
 
-void mf_select_tag(nfc_device *pdi, nfc_target *pnt)
+bool mf_select_tag(nfc_device *pdi, nfc_target *pnt)
 {
   if (nfc_initiator_select_passive_target(pdi, nm, NULL, 0, pnt) < 0) {
     ERR("Unable to connect to the MIFARE Classic tag");
     nfc_close(pdi);
     nfc_exit(context);
-    exit(EXIT_FAILURE);
+    return false;
   }
-}
-
-// Return position of sector if it is encrypted with the default key otherwise exit..
-int find_exploit_sector(mftag t)
-{
-  int i;
-  bool interesting = false;
-
-  for (i = 0; i < t.num_sectors; i++) {
-    if (!t.sectors[i].foundKeyA || !t.sectors[i].foundKeyB) {
-      interesting = true;
-      break;
-    }
-  }
-  if (!interesting) {
-    fprintf(stdout, "\nWe have all sectors encrypted with the default keys..\n\n");
-    return -1;
-  }
-  for (i = t.num_sectors-1; i>=0;--i) {
-    if (t.sectors[i].foundKeyB) {
-      fprintf(stdout, "\n\nUsing sector %02d as an exploit sector\n", i);
-      return i;
-    }
-  }
-  for (i = t.num_sectors-1; i>=0;--i) {
-    if (t.sectors[i].foundKeyA) {
-      fprintf(stdout, "\n\nUsing sector %02d as an exploit sector\n", i);
-      return i;
-    }
-  }
-  ERR("\n\nNo sector encrypted with the default key has been found, exiting..");
-  exit(EXIT_FAILURE);
+  return true;
 }
 
 bool mf_anticollision(mftag t, mfreader r)
@@ -1111,9 +1098,7 @@ bool mf_anticollision(mftag t, mfreader r)
   return true;
 }
 
-
-bool
-get_rats_is_2k(mftag t, mfreader r)
+bool get_rats_is_2k(mftag t, mfreader r)
 {
   int res;
   uint8_t abtRx[MAX_FRAME_LEN];
@@ -1140,7 +1125,7 @@ get_rats_is_2k(mftag t, mfreader r)
     printf("Error: tag disappeared\n");
     nfc_close(r.pdi);
     nfc_exit(context);
-    exit(EXIT_FAILURE);
+    return false;
   }
   if (res >= 10) {
     printf("ATS %02X%02X%02X%02X%02X|%02X%02X%02X%02X%02X\n", res, abtRx[0], abtRx[1], abtRx[2], abtRx[3], abtRx[4], abtRx[5], abtRx[6], abtRx[7], abtRx[8]);
