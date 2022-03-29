@@ -116,7 +116,7 @@ static void pn532_cloner_usage()
   printf("w             - (W)rite to a magic tag using the data from the most recent read tag\n");
   printf("w <File name> - (W)rite to a magic tag using the data from a saved dump file\n");
   printf("c             - (C)lean/Restore a magic tag to the factory default\n");
-  printf("r             - (E)xit\n");
+  printf("e             - (E)xit\n");
   printf("\n");
   printf("Example:\n");
   printf("Enter \"r\" to read a tag\n");

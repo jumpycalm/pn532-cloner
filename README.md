@@ -60,8 +60,8 @@ Because source code from [mfoc-hardnested](https://github.com/nfc-tools/mfoc-har
 
 # Support this project:
 
-Contribute code change, report bugs, and provide suggestions for improvements to this project to make this project better
-Buy RFID tags and RFID research tools from my [online store](https://www.mrkeyfob.com/collections/tags-for-rfid-research)
+Contribute code change, report bugs, and provide suggestions for improvements to this project to make this project better.
+Buy RFID tags and RFID research tools from my [online store](https://www.mrkeyfob.com/collections/tags-for-rfid-research).
 
 # Proprietary Notes
 
