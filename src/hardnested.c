@@ -146,7 +146,8 @@ uint32_t* get_bitflip_data(odd_even_t odd_even, uint16_t bitflip) {
 
             strm.next_out = (uint8_t *) bitset;
             strm.avail_out = sizeof (uint32_t) * (1 << 19);
-            decompress(&strm);
+            if (!decompress(&strm)
+                return NULL;
 
             bitflip_bitarrays[odd_even][bitflip] = bitset;
             bitflips_allocated[odd_even][bitflip] = true;
@@ -289,7 +290,8 @@ static bool init_bitflip_bitarrays(void) {
 
                     strm.next_out = (uint8_t *)bitset;
                     strm.avail_out = sizeof(uint32_t) * (1 << 19);
-                    decompress(&strm);
+                    if (!decompress(&strm))
+                        return false;
 
                   effective_bitflip[odd_even][num_effective_bitflips[odd_even]++] = bitflip;
                   if (hard_LOW_MEM) {
