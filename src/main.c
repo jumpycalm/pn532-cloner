@@ -224,14 +224,6 @@ bool if_tag_is_blank(nfc_iso14443a_info tag_info)
   return true;
 }
 
-uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num)
-{
-  if (sector_num < 32)
-    return sector_num * 4 + 3;
-  else
-    return (sector_num - 32) * 16 + 143;
-}
-
 bool is_first_block(uint32_t uiBlock)
 {
   // Test if we are in the small or big sectors
@@ -260,14 +252,6 @@ static uint32_t get_trailer_block(uint32_t uiFirstBlock)
 }
 */
 
-static uint16_t get_leading_block(uint16_t block)
-{
-  // Test if we are in the small or big sectors
-  if (block < 128)
-    return block / 4 * 4 ;
-  else
-    return block / 16 * 16;
-}
 
 // Calculate if we reached the 1st block that needs authentication
 static bool if_need_authenticate(uint16_t current_block)
@@ -282,10 +266,10 @@ static bool if_need_authenticate(uint16_t current_block)
   }
 
   // If the leading block is not default, we need to authenticate this block
-  if (get_leading_block(current_block) == current_block)
+  if (get_leading_block_num_from_block_num(current_block) == current_block)
     return true;
   // If the current block is not the leading block, we need to check if there's any block before this block is not default
-  for (i = current_block - 1; i >= get_leading_block(current_block); i--) {
+  for (i = current_block - 1; i >= get_leading_block_num_from_block_num(current_block); i--) {
     if (memcmp(&mtDump.amb[i], default_data_block, 16))
       return false;
   }
@@ -540,19 +524,19 @@ bool read_mfc()
   remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
 
   // Use hardnested to crack the unknown keys
-  uint8_t hardnested_src_block;
+  uint8_t hardnested_src_sector;
   uint8_t hardnested_src_key_type;
   uint8_t hardnested_src_key[6];
   i = t.num_sectors - 1;
   while(true) {
     if (t.sectors[i].foundKeyA) {
-      hardnested_src_block = get_trailer_block_num_from_sector_num(i);
+      hardnested_src_sector = i;
       hardnested_src_key_type = MC_AUTH_A;
       memcpy(hardnested_src_key, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
       break;
     }
     if (t.sectors[i].foundKeyB) {
-      hardnested_src_block = get_trailer_block_num_from_sector_num(i);
+      hardnested_src_sector = i;
       hardnested_src_key_type = MC_AUTH_B;
       memcpy(hardnested_src_key, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
       break;
@@ -566,7 +550,7 @@ bool read_mfc()
         goto out;
       if (!mf_anticollision(t, r))
           goto out;
-      if (!mfnestedhard(hardnested_src_block, hardnested_src_key_type, hardnested_src_key, get_trailer_block_num_from_sector_num(i), MC_AUTH_A))
+      if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       test_key_res = test_keys(&mp);
@@ -583,7 +567,7 @@ bool read_mfc()
         goto out;
       if (!mf_anticollision(t, r))
           goto out;
-      if (!mfnestedhard(hardnested_src_block, hardnested_src_key_type, hardnested_src_key, get_trailer_block_num_from_sector_num(i), MC_AUTH_B))
+      if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       test_key_res = test_keys(&mp);

@@ -233,12 +233,37 @@ mfoc_nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_
 
 // Sectors 0 to 31 have 4 blocks per sector.
 // Sectors 32 to 39 have 16 blocks per sector.
-uint8_t sector_to_block(uint8_t sector)
+uint8_t get_leading_block_num_from_sector_num(uint8_t sector)
 {
-  if (sector<32) {
+  if (sector<32)
     return sector<<2;
-  }
   sector -= 32;
 
   return 128+(sector<<4);
+}
+
+uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num)
+{
+  if (sector_num < 32)
+    return sector_num * 4 + 3;
+  else
+    return (sector_num - 32) * 16 + 143;
+}
+
+// Sectors 0 to 31 have 4 blocks per sector.
+// Sectors 32 to 39 have 16 blocks per sector.
+uint8_t get_sector_num_from_block_num(uint8_t block) {
+    if (block < 128)
+        return block >> 2;
+    block -= 128;
+    return 32 + (block >> 4);
+}
+
+uint16_t get_leading_block_num_from_block_num(uint16_t block)
+{
+  // Test if we are in the small or big sectors
+  if (block < 128)
+    return block / 4 * 4 ;
+  else
+    return block / 16 * 16;
 }

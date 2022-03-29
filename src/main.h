@@ -108,7 +108,6 @@ long long unsigned int bytes_to_num(uint8_t *src, uint32_t len);
 int8_t test_keys(mifare_param *mp);
 bool if_tag_is_blank(nfc_iso14443a_info tag_info);
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid);
-uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num);
 bool is_first_block(uint32_t uiBlock);
 bool is_trailer_block(uint32_t block);
 void sanitize_mfc_buffer(void);
