@@ -128,7 +128,7 @@ static void pn532_cloner_usage()
 // Test if the given key is valid, if the key is valid, add the key to the found key in global variable
 // Return number of new exploited keys
 // Return -1 if error is detected such as tag is removed
-int8_t test_keys(mifare_param *mp)
+int8_t test_keys(mifare_param *mp, bool test_block_0_only)
 {
   int8_t num_of_exploited_keys = 0;
   uint8_t current_block;
@@ -211,6 +211,9 @@ int8_t test_keys(mifare_param *mp)
 
     // Save position of a trailer block to sector struct
     t.sectors[i].trailer = current_block;
+
+    if (i == 0 && test_block_0_only)
+      break;
   }
   //printf("Debug! num_of_exploited_keys = %d\n", num_of_exploited_keys);
   return num_of_exploited_keys;
@@ -388,7 +391,6 @@ bool read_mfc()
     {0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5}, // NFCForum MAD key
     {0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5},
     {0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7}, // NFCForum content key
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Blank key
   };
 
   static mifare_param mp;
@@ -497,10 +499,20 @@ bool read_mfc()
   // Test the default keys
   remaining_keys_to_be_found = t.num_sectors * 2;
   memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
-  printf("\nChecking encryption keys, please wait up to 33s\n");
-  for (i = 0; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
+  printf("\nChecking encryption keys, please wait up to 8s\n");
+
+  memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
+  test_key_res = test_keys(&mp, false);
+  if (test_key_res < 0)
+    goto out;
+  else
+    remaining_keys_to_be_found -= test_key_res;
+
+  // For all non-default keys, only test Block 0 as if the key does not work for Block 0,
+  // they will unlikely to be able to work with other blocks as well.
+  for (i = 1; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, defaultKeys[i], sizeof(defaultKeys[i]));
-    test_key_res = test_keys(&mp);
+    test_key_res = test_keys(&mp, true);
     if (test_key_res < 0)
       goto out;
     else
@@ -553,7 +565,7 @@ bool read_mfc()
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
-      test_key_res = test_keys(&mp);
+      test_key_res = test_keys(&mp, false);
       if (test_key_res < 0)
         goto out;
       else
@@ -570,7 +582,7 @@ bool read_mfc()
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
-      test_key_res = test_keys(&mp);
+      test_key_res = test_keys(&mp, false);
       if (test_key_res < 0)
         goto out;
       else
