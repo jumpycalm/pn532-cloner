@@ -51,6 +51,7 @@
 #define BITFLIP_2ND_BYTE 0x0200
 #define CHECK_1ST_BYTES 0x01
 #define CHECK_2ND_BYTES 0x02
+#define TARGET_BF_STATE 5000000000 // Larger than this values leads to longer BF time
 
 static uint16_t sums[NUM_SUMS] = { 0, 32, 56, 64, 80, 96, 104, 112, 120, 128, 136, 144, 152, 160, 176, 192, 200, 224, 256 }; // possible sum property values
 
@@ -82,8 +83,6 @@ static bool write_stats = false;
 static uint32_t *all_bitflips_bitarray[2];
 static uint32_t num_all_bitflips_bitarray[2];
 static bool all_bitflips_bitarray_dirty[2];
-static uint64_t last_sample_clock = 0;
-static uint64_t sample_period = 0;
 static uint64_t num_keys_tested = 0;
 static statelist_t *candidates = NULL;
 static char failstr[250] = "";
@@ -833,45 +832,6 @@ static float sort_best_first_bytes(void)
   return nonces[best_first_bytes[0]].expected_num_brute_force;
 }
 
-static float update_reduction_rate(float last, bool init)
-{
-  static float queue[QUEUE_LEN];
-
-  for (uint16_t i = 0; i < QUEUE_LEN - 1; i++) {
-    if (init) {
-      queue[i] = (float)(1LL << 48);
-    } else {
-      queue[i] = queue[i + 1];
-    }
-  }
-  if (init) {
-    queue[QUEUE_LEN - 1] = (float)(1LL << 48);
-  } else {
-    queue[QUEUE_LEN - 1] = last;
-  }
-
-  // linear regression
-  float avg_y = 0.0;
-  float avg_x = 0.0;
-  for (uint16_t i = 0; i < QUEUE_LEN; i++) {
-    avg_x += i;
-    avg_y += queue[i];
-  }
-  avg_x /= QUEUE_LEN;
-  avg_y /= QUEUE_LEN;
-
-  float dev_xy = 0.0;
-  float dev_x2 = 0.0;
-  for (uint16_t i = 0; i < QUEUE_LEN; i++) {
-    dev_xy += (i - avg_x) * (queue[i] - avg_y);
-    dev_x2 += (i - avg_x) * (i - avg_x);
-  }
-
-  float reduction_rate = -1.0 * dev_xy / dev_x2; // the negative slope of the linear regression
-
-  return reduction_rate;
-}
-
 static bool shrink_key_space(float *brute_forces)
 {
   float brute_forces1 = check_smallest_bitflip_bitarrays();
@@ -880,9 +840,8 @@ static bool shrink_key_space(float *brute_forces)
     brute_forces2 = sort_best_first_bytes();
   }
   *brute_forces = MIN(brute_forces1, brute_forces2);
-  float reduction_rate = update_reduction_rate(*brute_forces, false);
 
-  return ((hardnested_stage & CHECK_2ND_BYTES) && reduction_rate >= 0.0 && (reduction_rate < brute_force_per_second * (float)sample_period / 1000.0 || *brute_forces < 0xF00000));
+  return ((hardnested_stage & CHECK_2ND_BYTES) && (*brute_forces < TARGET_BF_STATE));
 }
 
 static void estimate_sum_a8(void)
@@ -913,11 +872,6 @@ static noncelistentry_t *SearchFor2ndByte(uint8_t b1, uint8_t b2)
   return NULL;
 }
 
-static bool timeout(void)
-{
-  return (msclock() > last_sample_clock + sample_period);
-}
-
 static void
 #ifdef __has_attribute
 #if __has_attribute(force_align_arg_pointer)
@@ -928,14 +882,10 @@ static void
 {
   uint8_t first_byte = ((uint8_t *)args)[0];
   uint8_t last_byte = ((uint8_t *)args)[1];
-  uint8_t time_budget = ((uint8_t *)args)[2];
 
   if (hardnested_stage & CHECK_1ST_BYTES) {
     for (uint16_t bitflip_idx = 0; bitflip_idx < num_1st_byte_effective_bitflips; bitflip_idx++) {
       uint16_t bitflip = all_effective_bitflip[bitflip_idx];
-      if (time_budget & timeout()) {
-        return NULL;
-      }
       for (uint16_t i = first_byte; i <= last_byte; i++) {
         if (nonces[i].BitFlips[bitflip] == 0 && nonces[i].BitFlips[bitflip ^ 0x100] == 0
             && nonces[i].first != NULL && nonces[i ^ (bitflip & 0xff)].first != NULL) {
@@ -965,9 +915,6 @@ static void
   if (hardnested_stage & CHECK_2ND_BYTES) {
     for (uint16_t bitflip_idx = num_1st_byte_effective_bitflips; bitflip_idx < num_all_effective_bitflips; bitflip_idx++) {
       uint16_t bitflip = all_effective_bitflip[bitflip_idx];
-      if (time_budget & timeout()) {
-        return NULL;
-      }
       for (uint16_t i = first_byte; i <= last_byte; i++) {
         // Check for Bit Flip Property of 2nd bytes
         if (nonces[i].BitFlips[bitflip] == 0) {
@@ -1001,20 +948,19 @@ static void
   return NULL;
 }
 
-static void check_for_BitFlipProperties(bool time_budget)
+static void check_for_BitFlipProperties(void)
 {
   // create and run worker threads
   uint8_t num_core = num_CPUs();
   pthread_t *thread_id = (pthread_t *)malloc(sizeof(pthread_t) * num_core);
   uint8_t **args = malloc(num_core * sizeof(*args));
   for (uint8_t i = 0; i < num_core; i++)
-    args[i] = (uint8_t *)malloc(3 * sizeof(*args[0]));
+    args[i] = (uint8_t *)malloc(2 * sizeof(*args[0]));
 
   uint16_t bytes_per_thread = (256 + (num_core / 2)) / num_core;
   for (uint8_t i = 0; i < num_core; i++) {
     args[i][0] = i * bytes_per_thread;
     args[i][1] = MIN(args[i][0] + bytes_per_thread - 1, 255);
-    args[i][2] = time_budget;
   }
 
   // start threads
@@ -1043,9 +989,9 @@ static void check_for_BitFlipProperties(bool time_budget)
   free(args);
 }
 
-static void update_nonce_data(bool time_budget)
+static void update_nonce_data(void)
 {
-  check_for_BitFlipProperties(time_budget);
+  check_for_BitFlipProperties();
   update_allbitflips_array();
   update_sum_bitarrays(EVEN_STATE);
   update_sum_bitarrays(ODD_STATE);
@@ -1209,8 +1155,6 @@ static bool mf_enhanced_auth(uint8_t src_sector, uint8_t src_key_type, uint8_t *
 
 static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *key, uint8_t trg_sector, uint8_t trg_key_type)
 {
-  last_sample_clock = msclock();
-  sample_period = 2000; // initial rough estimate. Will be refined.
   hardnested_stage = CHECK_1ST_BYTES;
   bool acquisition_completed = false;
   float brute_force;
@@ -1244,7 +1188,7 @@ static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *ke
         hardnested_stage |= CHECK_2ND_BYTES;
         apply_sum_a0();
       }
-      update_nonce_data(true);
+      update_nonce_data();
       acquisition_completed = shrink_key_space(&brute_force);
       if (!reported_suma8) {
         char progress_string[80];
@@ -1255,15 +1199,10 @@ static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *ke
         hardnested_print_progress(num_acquired_nonces, "Apply bit flip properties", brute_force, 0, trg_sector, trg_key_type, false);
       }
     } else {
-      update_nonce_data(true);
+      update_nonce_data();
       acquisition_completed = shrink_key_space(&brute_force);
       hardnested_print_progress(num_acquired_nonces, "Apply bit flip properties", brute_force, 0, trg_sector, trg_key_type, false);
     }
-
-    if (msclock() - last_sample_clock < sample_period) {
-      sample_period = msclock() - last_sample_clock;
-    }
-    last_sample_clock = msclock();
   } while (!acquisition_completed);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
@@ -1904,7 +1843,6 @@ bool mfnestedhard(uint8_t src_sector, uint8_t src_key_type, uint8_t *key, uint8_
   init_sum_bitarrays();
   init_allbitflips_array();
   init_nonce_memory();
-  update_reduction_rate(0.0, true);
 
   if (!acquire_nonces(src_sector, src_key_type, key, trg_sector, trg_key_type)) {
     free_bitflip_bitarrays();
