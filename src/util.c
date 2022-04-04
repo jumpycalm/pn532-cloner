@@ -9,14 +9,14 @@
 //-----------------------------------------------------------------------------
 
 #include "util.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef _WIN32
 #include <sysinfoapi.h>
 #endif
 
-#define MAX_BIN_BREAK_LENGTH   (3072+384+1)
+#define MAX_BIN_BREAK_LENGTH (3072 + 384 + 1)
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -24,13 +24,13 @@
 
 // determine number of logical CPU cores (use for multithreaded functions)
 
-extern int num_CPUs(void) {
+extern int num_CPUs(void)
+{
 #ifdef _WIN32
-    SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
-    return sysinfo.dwNumberOfProcessors;
+  SYSTEM_INFO sysinfo;
+  GetSystemInfo(&sysinfo);
+  return sysinfo.dwNumberOfProcessors;
 #else
-    return sysconf(_SC_NPROCESSORS_ONLN);
+  return sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 }
-

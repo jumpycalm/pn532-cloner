@@ -33,7 +33,7 @@
 #include <string.h>
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "nfc-internal.h"
@@ -56,19 +56,18 @@ nfc_device_new(const nfc_context *context, const nfc_connstring connstring)
   // send the command to the chip
   res->bCrc = false;
   res->bPar = false;
-  res->bEasyFraming    = false;
+  res->bEasyFraming = false;
   res->bInfiniteSelect = false;
   res->bAutoIso14443_4 = false;
-  res->last_error  = 0;
+  res->last_error = 0;
   memcpy(res->connstring, connstring, sizeof(res->connstring));
   res->driver_data = NULL;
-  res->chip_data   = NULL;
+  res->chip_data = NULL;
 
   return res;
 }
 
-void
-nfc_device_free(nfc_device *dev)
+void nfc_device_free(nfc_device *dev)
 {
   if (dev) {
     free(dev->driver_data);

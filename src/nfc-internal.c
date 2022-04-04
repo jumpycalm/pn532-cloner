@@ -26,38 +26,34 @@
  */
 
 /**
-* @file nfc-internal.c
-* @brief Provide some useful internal functions
-*/
+ * @file nfc-internal.c
+ * @brief Provide some useful internal functions
+ */
 
-#include "nfc.h"
 #include "nfc-internal.h"
+#include "nfc.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
 
-#define LOG_GROUP    NFC_LOG_GROUP_GENERAL
+#define LOG_GROUP NFC_LOG_GROUP_GENERAL
 #define LOG_CATEGORY "libnfc.general"
 
 void string_as_boolean(const char *s, bool *value)
 {
   if (s) {
     if (!(*value)) {
-      if ((strcmp(s, "yes") == 0) ||
-          (strcmp(s, "true") == 0) ||
-          (strcmp(s, "1") == 0)) {
+      if ((strcmp(s, "yes") == 0) || (strcmp(s, "true") == 0) || (strcmp(s, "1") == 0)) {
         *value = true;
         return;
       }
     } else {
-      if ((strcmp(s, "no") == 0) ||
-          (strcmp(s, "false") == 0) ||
-          (strcmp(s, "0") == 0)) {
+      if ((strcmp(s, "no") == 0) || (strcmp(s, "false") == 0) || (strcmp(s, "0") == 0)) {
         *value = false;
         return;
       }
@@ -102,31 +98,31 @@ void nfc_context_free(nfc_context *context)
 void prepare_initiator_data(const nfc_modulation nm, uint8_t **ppbtInitiatorData, size_t *pszInitiatorData)
 {
   switch (nm.nmt) {
-    case NMT_ISO14443B:
-      // Application Family Identifier (AFI) must equals 0x00 in order to wakeup all ISO14443-B PICCs (see ISO/IEC 14443-3)
-      *ppbtInitiatorData = (uint8_t *) "\x00";
-      *pszInitiatorData = 1;
-      break;
-    case NMT_ISO14443BI:
-      // APGEN
-      *ppbtInitiatorData = (uint8_t *) "\x01\x0b\x3f\x80";
-      *pszInitiatorData = 4;
-      break;
-    case NMT_FELICA:
-      // polling payload must be present (see ISO/IEC 18092 11.2.2.5)
-      *ppbtInitiatorData = (uint8_t *) "\x00\xff\xff\x01\x00";
-      *pszInitiatorData = 5;
-      break;
-    case NMT_ISO14443A:
-    case NMT_ISO14443B2CT:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443BICLASS:
-    case NMT_JEWEL:
-    case NMT_BARCODE:
-    case NMT_DEP:
-      *ppbtInitiatorData = NULL;
-      *pszInitiatorData = 0;
-      break;
+  case NMT_ISO14443B:
+    // Application Family Identifier (AFI) must equals 0x00 in order to wakeup all ISO14443-B PICCs (see ISO/IEC 14443-3)
+    *ppbtInitiatorData = (uint8_t *)"\x00";
+    *pszInitiatorData = 1;
+    break;
+  case NMT_ISO14443BI:
+    // APGEN
+    *ppbtInitiatorData = (uint8_t *)"\x01\x0b\x3f\x80";
+    *pszInitiatorData = 4;
+    break;
+  case NMT_FELICA:
+    // polling payload must be present (see ISO/IEC 18092 11.2.2.5)
+    *ppbtInitiatorData = (uint8_t *)"\x00\xff\xff\x01\x00";
+    *pszInitiatorData = 5;
+    break;
+  case NMT_ISO14443A:
+  case NMT_ISO14443B2CT:
+  case NMT_ISO14443B2SR:
+  case NMT_ISO14443BICLASS:
+  case NMT_JEWEL:
+  case NMT_BARCODE:
+  case NMT_DEP:
+    *ppbtInitiatorData = NULL;
+    *pszInitiatorData = 0;
+    break;
   }
 }
 
@@ -150,7 +146,7 @@ int connstring_decode(const nfc_connstring connstring, const char *driver_name, 
     free(param0);
     return 0;
   }
-  char *param2    = malloc(n);
+  char *param2 = malloc(n);
   if (param2 == NULL) {
     perror("malloc");
     free(param0);
@@ -162,8 +158,7 @@ int connstring_decode(const nfc_connstring connstring, const char *driver_name, 
   snprintf(format, sizeof(format), "%%%i[^:]:%%%i[^:]:%%%i[^:]", n - 1, n - 1, n - 1);
   int res = sscanf(connstring, format, param0, param1, param2);
 
-  if (res < 1 || ((0 != strcmp(param0, driver_name)) &&
-                  (0 != strcmp(param0, bus_name)))) {
+  if (res < 1 || ((0 != strcmp(param0, driver_name)) && (0 != strcmp(param0, bus_name)))) {
     // Driver name does not match.
     res = 0;
   }
@@ -190,4 +185,3 @@ int connstring_decode(const nfc_connstring connstring, const char *driver_name, 
   free(param0);
   return res;
 }
-

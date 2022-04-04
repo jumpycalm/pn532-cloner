@@ -25,12 +25,12 @@
  */
 
 /**
-* @file mirror-subr.c
-* @brief Mirror bytes
-*/
+ * @file mirror-subr.c
+ * @brief Mirror bytes
+ */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <stdio.h>
@@ -69,7 +69,7 @@ mirror(uint8_t bt)
 static void
 mirror_bytes(uint8_t *pbts, size_t szLen)
 {
-  size_t  szByteNr;
+  size_t szByteNr;
 
   for (szByteNr = 0; szByteNr < szLen; szByteNr++) {
     *pbts = ByteMirror[*pbts];
@@ -80,13 +80,13 @@ mirror_bytes(uint8_t *pbts, size_t szLen)
 uint32_t
 mirror32(uint32_t ui32Bits)
 {
-  mirror_bytes((uint8_t *) & ui32Bits, 4);
+  mirror_bytes((uint8_t *)&ui32Bits, 4);
   return ui32Bits;
 }
 
 uint64_t
 mirror64(uint64_t ui64Bits)
 {
-  mirror_bytes((uint8_t *) & ui64Bits, 8);
+  mirror_bytes((uint8_t *)&ui64Bits, 8);
   return ui64Bits;
 }

@@ -32,10 +32,10 @@
 #ifndef __NFC_INTERNAL_H__
 #define __NFC_INTERNAL_H__
 
-#include <stdbool.h>
 #include "err.h"
+#include <stdbool.h>
 #if !defined(_MSC_VER)
-#  include <sys/time.h>
+#include <sys/time.h>
 #endif
 
 #include "nfc.h"
@@ -46,19 +46,20 @@
  * @macro HAL
  * @brief Execute corresponding driver function if exists.
  */
-#define HAL( FUNCTION, ... ) pnd->last_error = 0; \
-  if (pnd->driver->FUNCTION) { \
-    return pnd->driver->FUNCTION( __VA_ARGS__ ); \
-  } else { \
-    pnd->last_error = NFC_EDEVNOTSUPP; \
-    return false; \
+#define HAL(FUNCTION, ...)                     \
+  pnd->last_error = 0;                         \
+  if (pnd->driver->FUNCTION) {                 \
+    return pnd->driver->FUNCTION(__VA_ARGS__); \
+  } else {                                     \
+    pnd->last_error = NFC_EDEVNOTSUPP;         \
+    return false;                              \
   }
 
 #ifndef MIN
-#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 #ifndef MAX
-#define MAX(a,b) (((a) > (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
 /*
@@ -82,7 +83,7 @@
  * Initialise a buffer named buffer_name of size bytes.
  */
 #define BUFFER_INIT(buffer_name, size) \
-  uint8_t buffer_name[size]; \
+  uint8_t buffer_name[size];           \
   size_t __##buffer_name##_n = 0
 
 /*
@@ -90,7 +91,7 @@
  * BEWARE!  It eats children!
  */
 #define BUFFER_ALIAS(buffer_name, origin) \
-  uint8_t *buffer_name = (void *)origin; \
+  uint8_t *buffer_name = (void *)origin;  \
   size_t __##buffer_name##_n = 0;
 
 #define BUFFER_SIZE(buffer_name) (__##buffer_name##_n)
@@ -99,20 +100,20 @@
 /*
  * Append one byte of data to the buffer buffer_name.
  */
-#define BUFFER_APPEND(buffer_name, data) \
-  do { \
+#define BUFFER_APPEND(buffer_name, data)       \
+  do {                                         \
     buffer_name[__##buffer_name##_n++] = data; \
   } while (0)
 
 /*
  * Append size bytes of data to the buffer buffer_name.
  */
-#define BUFFER_APPEND_BYTES(buffer_name, data, size) \
-  do { \
-    size_t __n = 0; \
-    while (__n < size) { \
+#define BUFFER_APPEND_BYTES(buffer_name, data, size)                 \
+  do {                                                               \
+    size_t __n = 0;                                                  \
+    while (__n < size) {                                             \
       buffer_name[__##buffer_name##_n++] = ((uint8_t *)data)[__n++]; \
-    } \
+    }                                                                \
   } while (0)
 
 typedef enum {
@@ -131,7 +132,7 @@ struct nfc_driver {
 
   int (*initiator_init)(struct nfc_device *pnd);
   int (*initiator_init_secure_element)(struct nfc_device *pnd);
-  int (*initiator_select_passive_target)(struct nfc_device *pnd,  const nfc_modulation nm, const uint8_t *pbtInitData, const size_t szInitData, nfc_target *pnt);
+  int (*initiator_select_passive_target)(struct nfc_device *pnd, const nfc_modulation nm, const uint8_t *pbtInitData, const size_t szInitData, nfc_target *pnt);
   int (*initiator_poll_target)(struct nfc_device *pnd, const nfc_modulation *pnmModulations, const size_t szModulations, const uint8_t uiPollNr, const uint8_t btPeriod, nfc_target *pnt);
   int (*initiator_select_dep_target)(struct nfc_device *pnd, const nfc_dep_mode ndm, const nfc_baud_rate nbr, const nfc_dep_info *pndiInitiator, nfc_target *pnt, const int timeout);
   int (*initiator_deselect_target)(struct nfc_device *pnd);
@@ -158,8 +159,8 @@ struct nfc_driver {
   int (*powerdown)(struct nfc_device *pnd);
 };
 
-#  define DEVICE_NAME_LENGTH  256
-#  define DEVICE_PORT_LENGTH  64
+#define DEVICE_NAME_LENGTH 256
+#define DEVICE_PORT_LENGTH 64
 
 #define MAX_USER_DEFINED_DEVICES 4
 
@@ -177,7 +178,7 @@ struct nfc_user_defined_device {
 struct nfc_context {
   bool allow_autoscan;
   bool allow_intrusive_scan;
-  uint32_t  log_level;
+  uint32_t log_level;
   struct nfc_user_defined_device user_defined_devices[MAX_USER_DEFINED_DEVICES];
   unsigned int user_defined_device_count;
 };
@@ -196,28 +197,28 @@ struct nfc_device {
   void *chip_data;
 
   /** Device name string, including device wrapper firmware */
-  char    name[DEVICE_NAME_LENGTH];
+  char name[DEVICE_NAME_LENGTH];
   /** Device connection string */
   nfc_connstring connstring;
   /** Is the CRC automaticly added, checked and removed from the frames */
-  bool    bCrc;
+  bool bCrc;
   /** Does the chip handle parity bits, all parities are handled as data */
-  bool    bPar;
+  bool bPar;
   /** Should the chip handle frames encapsulation and chaining */
-  bool    bEasyFraming;
+  bool bEasyFraming;
   /** Should the chip try forever on select? */
-  bool    bInfiniteSelect;
+  bool bInfiniteSelect;
   /** Should the chip switch automatically activate ISO14443-4 when
       selecting tags supporting it? */
-  bool    bAutoIso14443_4;
+  bool bAutoIso14443_4;
   /** Supported modulation encoded in a byte */
-  uint8_t  btSupportByte;
+  uint8_t btSupportByte;
   /** Last reported error */
-  int     last_error;
+  int last_error;
 };
 
 nfc_device *nfc_device_new(const nfc_context *context, const nfc_connstring connstring);
-void        nfc_device_free(nfc_device *dev);
+void nfc_device_free(nfc_device *dev);
 
 void string_as_boolean(const char *s, bool *value);
 

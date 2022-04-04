@@ -41,12 +41,12 @@
  */
 
 #ifndef _LIBNFC_MIFARE_H_
-#  define _LIBNFC_MIFARE_H_
+#define _LIBNFC_MIFARE_H_
 
-#  include "nfc-types.h"
+#include "nfc-types.h"
 
 // Compiler directive, set struct alignment to 1 uint8_t for compatibility
-#  pragma pack(1)
+#pragma pack(1)
 
 typedef enum {
   MC_AUTH_A = 0x60,
@@ -61,22 +61,22 @@ typedef enum {
 
 // MIFARE command params
 struct mifare_param_auth {
-  uint8_t  abtKey[6];
-  uint8_t  abtAuthUid[4];
+  uint8_t abtKey[6];
+  uint8_t abtAuthUid[4];
 };
 
 struct mifare_param_data {
-  uint8_t  abtData[16];
+  uint8_t abtData[16];
 };
 
 struct mifare_param_value {
-  uint8_t  abtValue[4];
+  uint8_t abtValue[4];
 };
 
 struct mifare_param_trailer {
-  uint8_t  abtKeyA[6];
-  uint8_t  abtAccessBits[4];
-  uint8_t  abtKeyB[6];
+  uint8_t abtKeyA[6];
+  uint8_t abtAccessBits[4];
+  uint8_t abtKeyB[6];
 };
 
 typedef union {
@@ -87,32 +87,32 @@ typedef union {
 } mifare_param;
 
 // Reset struct alignment to default
-#  pragma pack()
+#pragma pack()
 
-bool    nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp);
+bool nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp);
 
-int    mfoc_nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp);
+int mfoc_nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp);
 
 // Compiler directive, set struct alignment to 1 uint8_t for compatibility
-#  pragma pack(1)
+#pragma pack(1)
 
 // MIFARE Classic
 typedef struct {
-  uint8_t  abtUID[4];  // beware for 7bytes UID it goes over next fields
-  uint8_t  btBCC;
-  uint8_t  btSAK;      // beware it's not always exactly SAK
-  uint8_t  abtATQA[2];
-  uint8_t  abtManufacturer[8];
+  uint8_t abtUID[4]; // beware for 7bytes UID it goes over next fields
+  uint8_t btBCC;
+  uint8_t btSAK; // beware it's not always exactly SAK
+  uint8_t abtATQA[2];
+  uint8_t abtManufacturer[8];
 } mifare_classic_block_manufacturer;
 
 typedef struct {
-  uint8_t  abtData[16];
+  uint8_t abtData[16];
 } mifare_classic_block_data;
 
 typedef struct {
-  uint8_t  abtKeyA[6];
-  uint8_t  abtAccessBits[4];
-  uint8_t  abtKeyB[6];
+  uint8_t abtKeyA[6];
+  uint8_t abtAccessBits[4];
+  uint8_t abtKeyB[6];
 } mifare_classic_block_trailer;
 
 typedef union {
@@ -127,89 +127,89 @@ typedef struct {
 
 // MIFARE Ultralight
 typedef struct {
-  uint8_t  sn0[3];
-  uint8_t  btBCC0;
-  uint8_t  sn1[4];
-  uint8_t  btBCC1;
-  uint8_t  internal;
-  uint8_t  lock[2];
-  uint8_t  otp[4];
+  uint8_t sn0[3];
+  uint8_t btBCC0;
+  uint8_t sn1[4];
+  uint8_t btBCC1;
+  uint8_t internal;
+  uint8_t lock[2];
+  uint8_t otp[4];
 } mifareul_block_manufacturer;
 
 // MIFARE Ultralight EV1 MF0UL11 Config Pages
 typedef struct {
-  uint8_t  mod;
-  uint8_t  rfui1[2];
-  uint8_t  auth0;
-  uint8_t  access;
-  uint8_t  vctid;
-  uint8_t  rfui2[2];
-  uint8_t  pwd[4];
-  uint8_t  pack[2];
-  uint8_t  rfui3[2];
+  uint8_t mod;
+  uint8_t rfui1[2];
+  uint8_t auth0;
+  uint8_t access;
+  uint8_t vctid;
+  uint8_t rfui2[2];
+  uint8_t pwd[4];
+  uint8_t pack[2];
+  uint8_t rfui3[2];
 } mifareul_block_config11;
 
 // MIFARE Ultralight EV1 MF0UL21 ConfigA Pages
 typedef struct {
-  uint8_t  lock[3];
-  uint8_t  rfui0;
-  uint8_t  mod;
-  uint8_t  rfui1[2];
-  uint8_t  auth0;
-  uint8_t  access;
-  uint8_t  vctid;
-  uint8_t  rfui2[2];
-  uint8_t  pwd[4];
+  uint8_t lock[3];
+  uint8_t rfui0;
+  uint8_t mod;
+  uint8_t rfui1[2];
+  uint8_t auth0;
+  uint8_t access;
+  uint8_t vctid;
+  uint8_t rfui2[2];
+  uint8_t pwd[4];
 } mifareul_block_config21A;
 
 // MIFARE Ultralight EV1 MF0UL21 ConfigB Pages
 typedef struct {
-  uint8_t  pack[2];
-  uint8_t  rfui3[2];
-  uint8_t  dummy[12];
+  uint8_t pack[2];
+  uint8_t rfui3[2];
+  uint8_t dummy[12];
 } mifareul_block_config21B;
 
 // MIFARE NTAG21[3/5/6] Manufacturer Pages
 typedef struct {
-  uint8_t  sn0[4];
+  uint8_t sn0[4];
 } mifarentag_block_manuf21356A;
 typedef struct {
-  uint8_t  sn1[4];
+  uint8_t sn1[4];
 } mifarentag_block_manuf21356B;
 typedef struct {
-  uint8_t  sn2;
-  uint8_t  internal;
-  uint8_t  lock[2];
+  uint8_t sn2;
+  uint8_t internal;
+  uint8_t lock[2];
 } mifarentag_block_manuf21356C;
 typedef struct {
-  uint8_t  cc[4];
+  uint8_t cc[4];
 } mifarentag_block_manuf21356D;
 
 // MIFARE NTAG21[3/5/6] Config Pages
 typedef struct {
-  uint8_t  dynlock[3];
-  uint8_t  rfui0;
+  uint8_t dynlock[3];
+  uint8_t rfui0;
 } mifarentag_block_config21356A;
 typedef struct {
-  uint8_t  cfg0[4];
+  uint8_t cfg0[4];
 } mifarentag_block_config21356B;
 typedef struct {
-  uint8_t  cfg1[4];
+  uint8_t cfg1[4];
 } mifarentag_block_config21356C;
 typedef struct {
-  uint8_t  pwd[4];
+  uint8_t pwd[4];
 } mifarentag_block_config21356D;
 typedef struct {
-  uint8_t  pack[2];
-  uint8_t  rfui1[2];
+  uint8_t pack[2];
+  uint8_t rfui1[2];
 } mifarentag_block_config21356E;
 
 typedef struct {
-  uint8_t  abtData[16];
+  uint8_t abtData[16];
 } mifareul_block_data;
 
 typedef struct {
-  uint8_t  abtData[4];
+  uint8_t abtData[4];
 } mifarentag_block_data;
 
 typedef union {
@@ -287,7 +287,7 @@ typedef union {
 } maxtag;
 
 // Reset struct alignment to default
-#  pragma pack()
+#pragma pack()
 
 uint8_t get_leading_block_num_from_sector_num(uint8_t sector);
 uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num);

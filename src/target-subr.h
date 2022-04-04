@@ -33,17 +33,17 @@
 #ifndef _TARGET_SUBR_H_
 #define _TARGET_SUBR_H_
 
-int     snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szLen);
-void    snprint_nfc_iso14443a_info(char *dst, size_t size, const nfc_iso14443a_info *pnai, bool verbose);
-void    snprint_nfc_iso14443b_info(char *dst, size_t size, const nfc_iso14443b_info *pnbi, bool verbose);
-void    snprint_nfc_iso14443bi_info(char *dst, size_t size, const nfc_iso14443bi_info *pnii, bool verbose);
-void    snprint_nfc_iso14443b2sr_info(char *dst, size_t size, const nfc_iso14443b2sr_info *pnsi, bool verbose);
-void    snprint_nfc_iso14443biclass_info(char *dst, size_t size, const nfc_iso14443biclass_info *pnic, bool verbose);
-void    snprint_nfc_iso14443b2ct_info(char *dst, size_t size, const nfc_iso14443b2ct_info *pnci, bool verbose);
-void    snprint_nfc_felica_info(char *dst, size_t size, const nfc_felica_info *pnfi, bool verbose);
-void    snprint_nfc_jewel_info(char *dst, size_t size, const nfc_jewel_info *pnji, bool verbose);
-void    snprint_nfc_barcode_info(char *dst, size_t size, const nfc_barcode_info *pnti, bool verbose);
-void    snprint_nfc_dep_info(char *dst, size_t size, const nfc_dep_info *pndi, bool verbose);
-void    snprint_nfc_target(char *dst, size_t size, const nfc_target *pnt, bool verbose);
+int snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szLen);
+void snprint_nfc_iso14443a_info(char *dst, size_t size, const nfc_iso14443a_info *pnai, bool verbose);
+void snprint_nfc_iso14443b_info(char *dst, size_t size, const nfc_iso14443b_info *pnbi, bool verbose);
+void snprint_nfc_iso14443bi_info(char *dst, size_t size, const nfc_iso14443bi_info *pnii, bool verbose);
+void snprint_nfc_iso14443b2sr_info(char *dst, size_t size, const nfc_iso14443b2sr_info *pnsi, bool verbose);
+void snprint_nfc_iso14443biclass_info(char *dst, size_t size, const nfc_iso14443biclass_info *pnic, bool verbose);
+void snprint_nfc_iso14443b2ct_info(char *dst, size_t size, const nfc_iso14443b2ct_info *pnci, bool verbose);
+void snprint_nfc_felica_info(char *dst, size_t size, const nfc_felica_info *pnfi, bool verbose);
+void snprint_nfc_jewel_info(char *dst, size_t size, const nfc_jewel_info *pnji, bool verbose);
+void snprint_nfc_barcode_info(char *dst, size_t size, const nfc_barcode_info *pnti, bool verbose);
+void snprint_nfc_dep_info(char *dst, size_t size, const nfc_dep_info *pndi, bool verbose);
+void snprint_nfc_target(char *dst, size_t size, const nfc_target *pnt, bool verbose);
 
 #endif

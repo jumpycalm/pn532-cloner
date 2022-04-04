@@ -32,8 +32,7 @@
 #ifndef _UNISTD_H_
 #define _UNISTD_H_
 
-#include "windows.h"
 #include "getopt.h"
+#include "windows.h"
 
 #endif /* _UNISTD_H_ */
-

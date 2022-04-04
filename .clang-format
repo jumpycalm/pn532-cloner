@@ -1,0 +1,4 @@
+# We'll use defaults from the WebKit style, but with 2 columns indentation.
+BasedOnStyle: WebKit
+IndentWidth: 2
+PointerAlignment: Right

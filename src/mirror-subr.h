@@ -29,14 +29,13 @@
  */
 
 #ifndef _LIBNFC_MIRROR_SUBR_H_
-#  define _LIBNFC_MIRROR_SUBR_H_
+#define _LIBNFC_MIRROR_SUBR_H_
 
-#  include <stdint.h>
+#include <stdint.h>
 
-#  include "nfc-types.h"
+#include "nfc-types.h"
 
-
-uint8_t  mirror(uint8_t bt);
+uint8_t mirror(uint8_t bt);
 uint32_t mirror32(uint32_t ui32Bits);
 uint64_t mirror64(uint64_t ui64Bits);
 

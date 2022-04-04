@@ -31,34 +31,34 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "uart.h"
 
-#include "nfc.h"
 #include "nfc-internal.h"
+#include "nfc.h"
 
-#include <inttypes.h>
 #include "log.h"
+#include <inttypes.h>
 
-#define LOG_GROUP    NFC_LOG_GROUP_COM
+#define LOG_GROUP NFC_LOG_GROUP_COM
 #define LOG_CATEGORY "libnfc.bus.uart_win32"
 
 // Handle platform specific includes
 #include <windows.h>
-#define delay_ms( X ) Sleep( X )
+#define delay_ms(X) Sleep(X)
 
 struct serial_port_windows {
-  HANDLE  hPort;                // Serial port handle
-  DCB     dcb;                  // Device control settings
-  COMMTIMEOUTS ct;              // Serial port time-out configuration
+  HANDLE hPort; // Serial port handle
+  DCB dcb; // Device control settings
+  COMMTIMEOUTS ct; // Serial port time-out configuration
 };
 
 serial_port
 uart_open(const char *pcPortName)
 {
-  char    acPortName[255];
+  char acPortName[255];
   struct serial_port_windows *sp = malloc(sizeof(struct serial_port_windows));
 
   if (sp == 0)
@@ -103,42 +103,39 @@ uart_open(const char *pcPortName)
   return sp;
 }
 
-void
-uart_close(const serial_port sp)
+void uart_close(const serial_port sp)
 {
-  if (((struct serial_port_windows *) sp)->hPort != INVALID_HANDLE_VALUE) {
-    CloseHandle(((struct serial_port_windows *) sp)->hPort);
+  if (((struct serial_port_windows *)sp)->hPort != INVALID_HANDLE_VALUE) {
+    CloseHandle(((struct serial_port_windows *)sp)->hPort);
   }
   free(sp);
 }
 
-void
-uart_flush_input(const serial_port sp, bool wait)
+void uart_flush_input(const serial_port sp, bool wait)
 {
-  PurgeComm(((struct serial_port_windows *) sp)->hPort, PURGE_RXABORT | PURGE_RXCLEAR);
+  PurgeComm(((struct serial_port_windows *)sp)->hPort, PURGE_RXABORT | PURGE_RXCLEAR);
 }
 
-void
-uart_set_speed(serial_port sp, const uint32_t uiPortSpeed)
+void uart_set_speed(serial_port sp, const uint32_t uiPortSpeed)
 {
   struct serial_port_windows *spw;
 
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Serial port speed requested to be set to %d baud.", uiPortSpeed);
   // Set port speed (Input and Output)
   switch (uiPortSpeed) {
-    case 9600:
-    case 19200:
-    case 38400:
-    case 57600:
-    case 115200:
-    case 230400:
-    case 460800:
-      break;
-    default:
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to set serial port speed to %d baud. Speed value must be one of these constants: 9600 (default), 19200, 38400, 57600, 115200, 230400 or 460800.", uiPortSpeed);
-      return;
+  case 9600:
+  case 19200:
+  case 38400:
+  case 57600:
+  case 115200:
+  case 230400:
+  case 460800:
+    break;
+  default:
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to set serial port speed to %d baud. Speed value must be one of these constants: 9600 (default), 19200, 38400, 57600, 115200, 230400 or 460800.", uiPortSpeed);
+    return;
   };
-  spw = (struct serial_port_windows *) sp;
+  spw = (struct serial_port_windows *)sp;
 
   // Set baud rate
   spw->dcb.BaudRate = uiPortSpeed;
@@ -152,15 +149,14 @@ uart_set_speed(serial_port sp, const uint32_t uiPortSpeed)
 uint32_t
 uart_get_speed(const serial_port sp)
 {
-  const struct serial_port_windows *spw = (struct serial_port_windows *) sp;
-  if (!GetCommState(spw->hPort, (serial_port) & spw->dcb))
+  const struct serial_port_windows *spw = (struct serial_port_windows *)sp;
+  if (!GetCommState(spw->hPort, (serial_port)&spw->dcb))
     return spw->dcb.BaudRate;
 
   return 0;
 }
 
-int
-uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, int timeout)
+int uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, int timeout)
 {
   DWORD dwBytesToGet = (DWORD)szRx;
   DWORD dwBytesReceived = 0;
@@ -176,7 +172,7 @@ uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, i
   timeouts.WriteTotalTimeoutMultiplier = 0;
   timeouts.WriteTotalTimeoutConstant = timeout_ms;
 
-  if (!SetCommTimeouts(((struct serial_port_windows *) sp)->hPort, &timeouts)) {
+  if (!SetCommTimeouts(((struct serial_port_windows *)sp)->hPort, &timeouts)) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to apply new timeout settings.");
     return NFC_EIO;
   }
@@ -187,9 +183,9 @@ uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, i
   volatile bool *abort_flag_p = (volatile bool *)abort_p;
   do {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "ReadFile");
-    res = ReadFile(((struct serial_port_windows *) sp)->hPort, pbtRx + dwTotalBytesReceived,
-                   dwBytesToGet,
-                   &dwBytesReceived, NULL);
+    res = ReadFile(((struct serial_port_windows *)sp)->hPort, pbtRx + dwTotalBytesReceived,
+        dwBytesToGet,
+        &dwBytesReceived, NULL);
 
     dwTotalBytesReceived += dwBytesReceived;
 
@@ -209,13 +205,12 @@ uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, i
   } while (((DWORD)szRx) > dwTotalBytesReceived);
   LOG_HEX(LOG_GROUP, "RX", pbtRx, szRx);
 
-  return (dwTotalBytesReceived == (DWORD) szRx) ? 0 : NFC_EIO;
+  return (dwTotalBytesReceived == (DWORD)szRx) ? 0 : NFC_EIO;
 }
 
-int
-uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
+int uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
 {
-  DWORD   dwTxLen = 0;
+  DWORD dwTxLen = 0;
 
   COMMTIMEOUTS timeouts;
   timeouts.ReadIntervalTimeout = 0;
@@ -224,13 +219,13 @@ uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
   timeouts.WriteTotalTimeoutMultiplier = 0;
   timeouts.WriteTotalTimeoutConstant = timeout;
 
-  if (!SetCommTimeouts(((struct serial_port_windows *) sp)->hPort, &timeouts)) {
+  if (!SetCommTimeouts(((struct serial_port_windows *)sp)->hPort, &timeouts)) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to apply new timeout settings.");
     return NFC_EIO;
   }
 
   LOG_HEX(LOG_GROUP, "TX", pbtTx, szTx);
-  if (!WriteFile(((struct serial_port_windows *) sp)->hPort, pbtTx, szTx, &dwTxLen, NULL)) {
+  if (!WriteFile(((struct serial_port_windows *)sp)->hPort, pbtTx, szTx, &dwTxLen, NULL)) {
     return NFC_EIO;
   }
   if (!dwTxLen)
@@ -241,7 +236,7 @@ uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
 BOOL is_port_available(int nPort)
 {
   HANDLE serial_handle;
-  char port_name[20] = {0};
+  char port_name[20] = { 0 };
   sprintf(port_name, "\\\\.\\com%u", nPort);
   serial_handle = CreateFileA(port_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
   if (serial_handle != INVALID_HANDLE_VALUE) {
@@ -256,7 +251,7 @@ BOOL is_port_available(int nPort)
 // Although the Max port number on Windows is 255, in most of the cases, port number rarely goes above 100
 //#define MAX_SERIAL_PORT_WIN 255
 #define MAX_SEARCH_SERIAL_PORT 100
-char ** uart_list_ports(void)
+char **uart_list_ports(void)
 {
   char **availablePorts = malloc((1 + MAX_SEARCH_SERIAL_PORT) * sizeof(char *));
   if (!availablePorts) {

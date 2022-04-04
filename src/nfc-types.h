@@ -33,9 +33,9 @@
 #ifndef __NFC_TYPES_H__
 #define __NFC_TYPES_H__
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 #include <stdio.h>
 
 #ifndef NFC_BUFSIZE_CONNSTRING
@@ -85,12 +85,12 @@ typedef enum {
    */
   NP_TIMEOUT_COM,
   /** Let the PN53X chip handle the CRC bytes. This means that the chip appends
-  * the CRC bytes to the frames that are transmitted. It will parse the last
-  * bytes from received frames as incoming CRC bytes. They will be verified
-  * against the used modulation and protocol. If an frame is expected with
-  * incorrect CRC bytes this option should be disabled. Example frames where
-  * this is useful are the ATQA and UID+BCC that are transmitted without CRC
-  * bytes during the anti-collision phase of the ISO14443-A protocol. */
+   * the CRC bytes to the frames that are transmitted. It will parse the last
+   * bytes from received frames as incoming CRC bytes. They will be verified
+   * against the used modulation and protocol. If an frame is expected with
+   * incorrect CRC bytes this option should be disabled. Example frames where
+   * this is useful are the ATQA and UID+BCC that are transmitted without CRC
+   * bytes during the anti-collision phase of the ISO14443-A protocol. */
   NP_HANDLE_CRC,
   /** Parity bits in the network layer of ISO14443-A are by default generated and
    * validated in the PN53X chip. This is a very convenient feature. On certain
@@ -143,7 +143,7 @@ typedef enum {
 } nfc_property;
 
 // Compiler directive, set struct alignment to 1 uint8_t for compatibility
-#  pragma pack(1)
+#pragma pack(1)
 
 /**
  * @enum nfc_dep_mode
@@ -161,20 +161,20 @@ typedef enum {
  */
 typedef struct {
   /** NFCID3 */
-  uint8_t  abtNFCID3[10];
+  uint8_t abtNFCID3[10];
   /** DID */
-  uint8_t  btDID;
+  uint8_t btDID;
   /** Supported send-bit rate */
-  uint8_t  btBS;
+  uint8_t btBS;
   /** Supported receive-bit rate */
-  uint8_t  btBR;
+  uint8_t btBR;
   /** Timeout value */
-  uint8_t  btTO;
+  uint8_t btTO;
   /** PP Parameters */
-  uint8_t  btPP;
+  uint8_t btPP;
   /** General Bytes */
-  uint8_t  abtGB[48];
-  size_t  szGB;
+  uint8_t abtGB[48];
+  size_t szGB;
   /** DEP mode */
   nfc_dep_mode ndm;
 } nfc_dep_info;
@@ -184,12 +184,12 @@ typedef struct {
  * @brief NFC ISO14443A tag (MIFARE) information
  */
 typedef struct {
-  uint8_t  abtAtqa[2];
-  uint8_t  btSak;
-  size_t  szUidLen;
-  uint8_t  abtUid[10];
-  size_t  szAtsLen;
-  uint8_t  abtAts[254]; // Maximal theoretical ATS is FSD-2, FSD=256 for FSDI=8 in RATS
+  uint8_t abtAtqa[2];
+  uint8_t btSak;
+  size_t szUidLen;
+  uint8_t abtUid[10];
+  size_t szAtsLen;
+  uint8_t abtAts[254]; // Maximal theoretical ATS is FSD-2, FSD=256 for FSDI=8 in RATS
 } nfc_iso14443a_info;
 
 /**
@@ -197,11 +197,11 @@ typedef struct {
  * @brief NFC FeLiCa tag information
  */
 typedef struct {
-  size_t  szLen;
-  uint8_t  btResCode;
-  uint8_t  abtId[8];
-  uint8_t  abtPad[8];
-  uint8_t  abtSysCode[2];
+  size_t szLen;
+  uint8_t btResCode;
+  uint8_t abtId[8];
+  uint8_t abtPad[8];
+  uint8_t abtSysCode[2];
 } nfc_felica_info;
 
 /**
@@ -232,7 +232,7 @@ typedef struct {
   uint8_t btConfig;
   /** ATR, if any */
   size_t szAtrLen;
-  uint8_t  abtAtr[33];
+  uint8_t abtAtr[33];
 } nfc_iso14443bi_info;
 
 /**
@@ -266,8 +266,8 @@ typedef struct {
  * @brief NFC Jewel tag information
  */
 typedef struct {
-  uint8_t  btSensRes[2];
-  uint8_t  btId[4];
+  uint8_t btSensRes[2];
+  uint8_t btId[4];
 } nfc_jewel_info;
 
 /**
@@ -275,8 +275,8 @@ typedef struct {
  * @brief Thinfilm NFC Barcode information
  */
 typedef struct {
-  size_t   szDataLen;
-  uint8_t  abtData[32];
+  size_t szDataLen;
+  uint8_t abtData[32];
 } nfc_barcode_info;
 
 /**
@@ -321,7 +321,7 @@ typedef enum {
   NMT_ISO14443B2CT, // ISO14443-2B ASK CTx
   NMT_FELICA,
   NMT_DEP,
-  NMT_BARCODE,    // Thinfilm NFC Barcode
+  NMT_BARCODE, // Thinfilm NFC Barcode
   NMT_ISO14443BICLASS, // HID iClass 14443B mode
   NMT_END_ENUM = NMT_ISO14443BICLASS, // dummy for sizing - always should alias last
 } nfc_modulation_type;
@@ -354,6 +354,6 @@ typedef struct {
 } nfc_target;
 
 // Reset struct alignment to default
-#  pragma pack()
+#pragma pack()
 
 #endif // _LIBNFC_TYPES_H_

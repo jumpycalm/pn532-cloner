@@ -25,48 +25,44 @@
  */
 
 #include "log.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdio.h>
-#include <stdarg.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 const char *
 log_priority_to_str(const int priority)
 {
   switch (priority) {
-    case NFC_LOG_PRIORITY_ERROR:
-      return  "error";
-    case NFC_LOG_PRIORITY_INFO:
-      return  "info";
-    case NFC_LOG_PRIORITY_DEBUG:
-      return  "debug";
-    default:
-      break;
+  case NFC_LOG_PRIORITY_ERROR:
+    return "error";
+  case NFC_LOG_PRIORITY_INFO:
+    return "info";
+  case NFC_LOG_PRIORITY_DEBUG:
+    return "debug";
+  default:
+    break;
   }
   return "unknown";
 }
-
 
 #ifdef LOG
 
 #include "log-internal.h"
 
-void
-log_init(const nfc_context *context)
+void log_init(const nfc_context *context)
 {
   (void)context;
 }
 
-void
-log_exit(void)
+void log_exit(void)
 {
 }
 
-void
-log_put(const uint8_t group, const char *category, const uint8_t priority, const char *format, ...)
+void log_put(const uint8_t group, const char *category, const uint8_t priority, const char *format, ...)
 {
   char *env_log_level = NULL;
   uint32_t log_level;
@@ -83,7 +79,7 @@ log_put(const uint8_t group, const char *category, const uint8_t priority, const
 
   //  printf("log_level = %"PRIu32" group = %"PRIu8" priority = %"PRIu8"\n", log_level, group, priority);
   if (log_level) { // If log is not disabled by log_level=none
-    if (((log_level & 0x00000003) >= priority) ||   // Global log level
+    if (((log_level & 0x00000003) >= priority) || // Global log level
         (((log_level >> (group * 2)) & 0x00000003) >= priority)) { // Group log level
 
       va_list va;

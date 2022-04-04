@@ -28,21 +28,21 @@
 #define __LOG_H__
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "nfc-internal.h"
 
-#define NFC_LOG_PRIORITY_NONE   0
-#define NFC_LOG_PRIORITY_ERROR  1
-#define NFC_LOG_PRIORITY_INFO   2
-#define NFC_LOG_PRIORITY_DEBUG  3
+#define NFC_LOG_PRIORITY_NONE 0
+#define NFC_LOG_PRIORITY_ERROR 1
+#define NFC_LOG_PRIORITY_INFO 2
+#define NFC_LOG_PRIORITY_DEBUG 3
 
-#define NFC_LOG_GROUP_GENERAL   1
-#define NFC_LOG_GROUP_CONFIG    2
-#define NFC_LOG_GROUP_CHIP      3
-#define NFC_LOG_GROUP_DRIVER    4
-#define NFC_LOG_GROUP_COM       5
+#define NFC_LOG_GROUP_GENERAL 1
+#define NFC_LOG_GROUP_CONFIG 2
+#define NFC_LOG_GROUP_CHIP 3
+#define NFC_LOG_GROUP_DRIVER 4
+#define NFC_LOG_GROUP_COM 5
 
 /*
   To enable log only for one (or more) group, you can use this formula:
@@ -57,31 +57,33 @@
        LIBNFC_LOG_LEVEL=3585  // 1+512+3072
 */
 
-//int log_priority_to_int(const char* priority);
+// int log_priority_to_int(const char* priority);
 const char *log_priority_to_str(const int priority);
 
 #if defined LOG
 
-#  ifndef __has_attribute
-#    define __has_attribute(x) 0
-#  endif
+#ifndef __has_attribute
+#define __has_attribute(x) 0
+#endif
 
-#  if __has_attribute(format) || defined(__GNUC__)
-#    define __has_attribute_format 1
-#  endif
+#if __has_attribute(format) || defined(__GNUC__)
+#define __has_attribute_format 1
+#endif
 
 void log_init(const nfc_context *context);
 void log_exit(void);
 void log_put(const uint8_t group, const char *category, const uint8_t priority, const char *format, ...)
-#  if __has_attribute_format
-__attribute__((format(printf, 4, 5)))
-#  endif
-;
+#if __has_attribute_format
+    __attribute__((format(printf, 4, 5)))
+#endif
+    ;
 #else
 // No logging
-#define log_init(nfc_context) ((void) 0)
-#define log_exit() ((void) 0)
-#define log_put(group, category, priority, format, ...) do {} while (0)
+#define log_init(nfc_context) ((void)0)
+#define log_exit() ((void)0)
+#define log_put(group, category, priority, format, ...) \
+  do {                                                  \
+  } while (0)
 
 #endif // LOG
 
@@ -90,32 +92,34 @@ __attribute__((format(printf, 4, 5)))
  * @brief Log a byte-array in hexadecimal format
  * Max values:  pcTag of 121 bytes + ": " + 300 bytes of data+ "\0" => acBuf of 1024 bytes
  */
-#  ifdef LOG
-#    define LOG_HEX(group, pcTag, pbtData, szBytes) do { \
-    size_t	 __szPos; \
-    char	 __acBuf[1024]; \
-    size_t	 __szBuf = 0; \
-    if ((int)szBytes < 0) { \
-      fprintf (stderr, "%s:%d: Attempt to print %d bytes!\n", __FILE__, __LINE__, (int)szBytes); \
-      log_put (group, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s:%d: Attempt to print %d bytes!\n", __FILE__, __LINE__, (int)szBytes); \
-      abort(); \
-      break; \
-    } \
-    snprintf (__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%s: ", pcTag); \
-    __szBuf += strlen (pcTag) + 2; \
-    for (__szPos=0; (__szPos < (size_t)(szBytes)) && (__szBuf < sizeof(__acBuf)); __szPos++) { \
-      snprintf (__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%02x ",((uint8_t *)(pbtData))[__szPos]); \
-      __szBuf += 3; \
-    } \
-    log_put (group, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", __acBuf); \
+#ifdef LOG
+#define LOG_HEX(group, pcTag, pbtData, szBytes)                                                                                      \
+  do {                                                                                                                               \
+    size_t __szPos;                                                                                                                  \
+    char __acBuf[1024];                                                                                                              \
+    size_t __szBuf = 0;                                                                                                              \
+    if ((int)szBytes < 0) {                                                                                                          \
+      fprintf(stderr, "%s:%d: Attempt to print %d bytes!\n", __FILE__, __LINE__, (int)szBytes);                                      \
+      log_put(group, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s:%d: Attempt to print %d bytes!\n", __FILE__, __LINE__, (int)szBytes); \
+      abort();                                                                                                                       \
+      break;                                                                                                                         \
+    }                                                                                                                                \
+    snprintf(__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%s: ", pcTag);                                                           \
+    __szBuf += strlen(pcTag) + 2;                                                                                                    \
+    for (__szPos = 0; (__szPos < (size_t)(szBytes)) && (__szBuf < sizeof(__acBuf)); __szPos++) {                                     \
+      snprintf(__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%02x ", ((uint8_t *)(pbtData))[__szPos]);                              \
+      __szBuf += 3;                                                                                                                  \
+    }                                                                                                                                \
+    log_put(group, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", __acBuf);                                                             \
   } while (0);
-#  else
-#    define LOG_HEX(group, pcTag, pbtData, szBytes) do { \
-    (void) group; \
-    (void) pcTag; \
-    (void) pbtData; \
-    (void) szBytes; \
+#else
+#define LOG_HEX(group, pcTag, pbtData, szBytes) \
+  do {                                          \
+    (void)group;                                \
+    (void)pcTag;                                \
+    (void)pbtData;                              \
+    (void)szBytes;                              \
   } while (0);
-#  endif
+#endif
 
 #endif // __LOG_H__

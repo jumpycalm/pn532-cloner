@@ -10,21 +10,21 @@
 // attacks this doesn't rely on implementation errors but only on the
 // inherent weaknesses of the crypto1 cypher. Described in
 //   Carlo Meijer, Roel Verdult, "Ciphertext-only Cryptanalysis on Hardened
-//   Mifare Classic Cards" in Proceedings of the 22nd ACM SIGSAC Conference on 
+//   Mifare Classic Cards" in Proceedings of the 22nd ACM SIGSAC Conference on
 //   Computer and Communications Security, 2015
 //-----------------------------------------------------------------------------
 
 #ifndef HARDNESTED_BRUTEFORCE_H__
 #define HARDNESTED_BRUTEFORCE_H__
 
-#include <stdint.h>
-#include <stdbool.h>
 #include "../hardnested.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
-    uint32_t *states[2];
-    uint32_t len[2];
-    void* next;
+  uint32_t *states[2];
+  uint32_t len[2];
+  void *next;
 } statelist_t;
 
 extern void prepare_bf_test_nonces(noncelist_t *nonces, uint8_t best_first_byte);

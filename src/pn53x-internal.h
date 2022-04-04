@@ -119,11 +119,11 @@
  * Start bytes, packet length, length checksum, direction, packet checksum and postamble are overhead
  */
 // The TFI is considered part of the overhead
-#  define PN53x_NORMAL_FRAME__DATA_MAX_LEN              254
-#  define PN53x_NORMAL_FRAME__OVERHEAD                  8
-#  define PN53x_EXTENDED_FRAME__DATA_MAX_LEN            264
-#  define PN53x_EXTENDED_FRAME__OVERHEAD                11
-#  define PN53x_ACK_FRAME__LEN                          6
+#define PN53x_NORMAL_FRAME__DATA_MAX_LEN 254
+#define PN53x_NORMAL_FRAME__OVERHEAD 8
+#define PN53x_EXTENDED_FRAME__DATA_MAX_LEN 264
+#define PN53x_EXTENDED_FRAME__OVERHEAD 11
+#define PN53x_ACK_FRAME__LEN 6
 
 typedef struct {
   uint8_t ui8Code;
@@ -138,22 +138,31 @@ typedef enum {
   PN531 = 0x01,
   PN532 = 0x02,
   PN533 = 0x04,
-  RCS360  = 0x08
+  RCS360 = 0x08
 } pn53x_type;
 
 #ifndef LOG
-#  define PNCMD( X, Y ) { X , Y }
-#  define PNCMD_TRACE( X ) do {} while(0)
+#define PNCMD(X, Y) \
+  {                 \
+    X, Y            \
+  }
+#define PNCMD_TRACE(X) \
+  do {                 \
+  } while (0)
 #else
-#  define PNCMD( X, Y ) { X , Y, #X }
-#  define PNCMD_TRACE( X ) do { \
-    for (size_t i=0; i<(sizeof(pn53x_commands)/sizeof(pn53x_command)); i++) { \
-      if ( X == pn53x_commands[i].ui8Code ) { \
-        log_put( LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", pn53x_commands[i].abtCommandText ); \
-        break; \
-      } \
-    } \
-  } while(0)
+#define PNCMD(X, Y) \
+  {                 \
+    X, Y, #X        \
+  }
+#define PNCMD_TRACE(X)                                                                                    \
+  do {                                                                                                    \
+    for (size_t i = 0; i < (sizeof(pn53x_commands) / sizeof(pn53x_command)); i++) {                       \
+      if (X == pn53x_commands[i].ui8Code) {                                                               \
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", pn53x_commands[i].abtCommandText); \
+        break;                                                                                            \
+      }                                                                                                   \
+    }                                                                                                     \
+  } while (0)
 #endif
 
 static const pn53x_command pn53x_commands[] = {
@@ -169,7 +178,7 @@ static const pn53x_command pn53x_commands[] = {
   PNCMD(SetParameters, PN531 | PN532 | PN533 | RCS360),
   PNCMD(SAMConfiguration, PN531 | PN532),
   PNCMD(PowerDown, PN531 | PN532),
-  PNCMD(AlparCommandForTDA, PN533 | RCS360),   // Has another usage on RC-S360...
+  PNCMD(AlparCommandForTDA, PN533 | RCS360), // Has another usage on RC-S360...
 
   // RF communication
   PNCMD(RFConfiguration, PN531 | PN532 | PN533 | RCS360),
@@ -204,7 +213,7 @@ static const pn53x_command pn53x_commands[] = {
 };
 
 // SFR part
-#define _BV( X ) (1 << X)
+#define _BV(X) (1 << X)
 
 #define P30 0
 #define P31 1
@@ -221,23 +230,27 @@ typedef struct {
   const char *abtRegisterDescription;
 } pn53x_register;
 
-#  define PNREG( X, Y ) { X , #X, Y }
+#define PNREG(X, Y) \
+  {                 \
+    X, #X, Y        \
+  }
 
 #endif /* LOG */
 
-
 #ifndef LOG
-#  define PNREG_TRACE( X ) do { \
-  } while(0)
+#define PNREG_TRACE(X) \
+  do {                 \
+  } while (0)
 #else
-#  define PNREG_TRACE( X ) do { \
-    for (size_t i=0; i<(sizeof(pn53x_registers)/sizeof(pn53x_register)); i++) { \
-      if ( X == pn53x_registers[i].ui16Address ) { \
-        log_put( LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s (%s)", pn53x_registers[i].abtRegisterText, pn53x_registers[i].abtRegisterDescription ); \
-        break; \
-      } \
-    } \
-  } while(0)
+#define PNREG_TRACE(X)                                                                                                                                      \
+  do {                                                                                                                                                      \
+    for (size_t i = 0; i < (sizeof(pn53x_registers) / sizeof(pn53x_register)); i++) {                                                                       \
+      if (X == pn53x_registers[i].ui16Address) {                                                                                                            \
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s (%s)", pn53x_registers[i].abtRegisterText, pn53x_registers[i].abtRegisterDescription); \
+        break;                                                                                                                                              \
+      }                                                                                                                                                     \
+    }                                                                                                                                                       \
+  } while (0)
 #endif
 
 // Register addresses
@@ -314,33 +327,33 @@ typedef struct {
 #define PN53X_SFR_P7 0xFFF7
 
 /* PN53x specific errors */
-#define ETIMEOUT	0x01
-#define ECRC		0x02
-#define EPARITY		0x03
-#define EBITCOUNT	0x04
-#define EFRAMING	0x05
-#define EBITCOLL	0x06
-#define ESMALLBUF	0x07
-#define EBUFOVF		0x09
-#define ERFTIMEOUT	0x0a
-#define ERFPROTO	0x0b
-#define EOVHEAT		0x0d
-#define EINBUFOVF	0x0e
-#define EINVPARAM	0x10
-#define EDEPUNKCMD	0x12
-#define EINVRXFRAM	0x13
-#define EMFAUTH		0x14
-#define ENSECNOTSUPP	0x18	// PN533 only
-#define EBCC		0x23
-#define EDEPINVSTATE	0x25
-#define EOPNOTALL	0x26
-#define ECMD		0x27
-#define ETGREL		0x29
-#define ECID		0x2a
-#define ECDISCARDED	0x2b
-#define ENFCID3		0x2c
-#define EOVCURRENT	0x2d
-#define ENAD		0x2e
+#define ETIMEOUT 0x01
+#define ECRC 0x02
+#define EPARITY 0x03
+#define EBITCOUNT 0x04
+#define EFRAMING 0x05
+#define EBITCOLL 0x06
+#define ESMALLBUF 0x07
+#define EBUFOVF 0x09
+#define ERFTIMEOUT 0x0a
+#define ERFPROTO 0x0b
+#define EOVHEAT 0x0d
+#define EINBUFOVF 0x0e
+#define EINVPARAM 0x10
+#define EDEPUNKCMD 0x12
+#define EINVRXFRAM 0x13
+#define EMFAUTH 0x14
+#define ENSECNOTSUPP 0x18 // PN533 only
+#define EBCC 0x23
+#define EDEPINVSTATE 0x25
+#define EOPNOTALL 0x26
+#define ECMD 0x27
+#define ETGREL 0x29
+#define ECID 0x2a
+#define ECDISCARDED 0x2b
+#define ENFCID3 0x2c
+#define EOVCURRENT 0x2d
+#define ENAD 0x2e
 
 #ifdef LOG
 static const pn53x_register pn53x_registers[] = {
@@ -358,8 +371,8 @@ static const pn53x_register pn53x_registers[] = {
   PNREG(PN53X_REG_CIU_MifNFC, "Controls the communication in ISO/IEC 14443/MIFARE and NFC target mode at 106 kbit/s"),
   PNREG(PN53X_REG_CIU_ManualRCV, "Allows manual fine tuning of the internal receiver"),
   PNREG(PN53X_REG_CIU_TypeB, "Configure the ISO/IEC 14443 type B"),
-//  PNREG (PN53X_REG_-, "Reserved"),
-//  PNREG (PN53X_REG_-, "Reserved"),
+  //  PNREG (PN53X_REG_-, "Reserved"),
+  //  PNREG (PN53X_REG_-, "Reserved"),
   PNREG(PN53X_REG_CIU_CRCResultMSB, "Shows the actual MSB values of the CRC calculation"),
   PNREG(PN53X_REG_CIU_CRCResultLSB, "Shows the actual LSB values of the CRC calculation"),
   PNREG(PN53X_REG_CIU_GsNOFF, "Selects the conductance of the antenna driver pins TX1 and TX2 for load modulation when own RF field is switched OFF"),
@@ -375,7 +388,7 @@ static const pn53x_register pn53x_registers[] = {
   PNREG(PN53X_REG_CIU_TReloadVal_lo, "Describes the 16-bit long timer reload value (Lower 8 bits)"),
   PNREG(PN53X_REG_CIU_TCounterVal_hi, "Describes the 16-bit long timer actual value (Higher 8 bits)"),
   PNREG(PN53X_REG_CIU_TCounterVal_lo, "Describes the 16-bit long timer actual value (Lower 8 bits)"),
-//  PNREG (PN53X_REG_-, "Reserved"),
+  //  PNREG (PN53X_REG_-, "Reserved"),
   PNREG(PN53X_REG_CIU_TestSel1, "General test signals configuration"),
   PNREG(PN53X_REG_CIU_TestSel2, "General test signals configuration and PRBS control"),
   PNREG(PN53X_REG_CIU_TestPinEn, "Enables test signals output on pins."),
@@ -387,9 +400,9 @@ static const pn53x_register pn53x_registers[] = {
   PNREG(PN53X_REG_CIU_TestDAC1, "Defines the test value for the TestDAC1"),
   PNREG(PN53X_REG_CIU_TestDAC2, "Defines the test value for the TestDAC2"),
   PNREG(PN53X_REG_CIU_TestADC, "Show the actual value of ADC I and Q"),
-//  PNREG (PN53X_REG_-, "Reserved for tests"),
-//  PNREG (PN53X_REG_-, "Reserved for tests"),
-//  PNREG (PN53X_REG_-, "Reserved for tests"),
+  //  PNREG (PN53X_REG_-, "Reserved for tests"),
+  //  PNREG (PN53X_REG_-, "Reserved for tests"),
+  //  PNREG (PN53X_REG_-, "Reserved for tests"),
   PNREG(PN53X_REG_CIU_RFlevelDet, "Power down of the RF level detector"),
   PNREG(PN53X_REG_CIU_SIC_CLK_en, "Enables the use of secure IC clock on P34 / SIC_CLK"),
   PNREG(PN53X_REG_CIU_Command, "Starts and stops the command execution"),

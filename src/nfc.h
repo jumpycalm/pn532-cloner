@@ -32,46 +32,46 @@
  */
 
 #ifndef _LIBNFC_H_
-#  define _LIBNFC_H_
+#define _LIBNFC_H_
 
-#  include <stdint.h>
-#  include <stdbool.h>
+#include <stdbool.h>
+#include <stdint.h>
 
-#  ifdef _WIN32
+#ifdef _WIN32
 /* Windows platform */
-#    ifndef _WINDLL
+#ifndef _WINDLL
 /* nfc_EXPORTS */
-#    else
+#else
 /* _WINDLL */
 /* Manual makefile */
-#      define NFC_EXPORT
-#    endif
+#define NFC_EXPORT
+#endif
 /* _WINDLL */
-#  else
+#else
 /* _WIN32 */
-#    define NFC_EXPORT
-#  endif
+#define NFC_EXPORT
+#endif
 /* _WIN32 */
 
-#  include "nfc-types.h"
+#include "nfc-types.h"
 
-#  ifndef __has_attribute
-#    define __has_attribute(x) 0
-#  endif
+#ifndef __has_attribute
+#define __has_attribute(x) 0
+#endif
 
-#  if __has_attribute(nonnull) || defined(__GNUC__)
-#    define __has_attribute_nonnull 1
-#  endif
+#if __has_attribute(nonnull) || defined(__GNUC__)
+#define __has_attribute_nonnull 1
+#endif
 
-#  if __has_attribute_nonnull
-#    define ATTRIBUTE_NONNULL( param ) __attribute__((nonnull (param)))
-#  else
-#  define ATTRIBUTE_NONNULL( param )
-#  endif
+#if __has_attribute_nonnull
+#define ATTRIBUTE_NONNULL(param) __attribute__((nonnull(param)))
+#else
+#define ATTRIBUTE_NONNULL(param)
+#endif
 
-#  ifdef __cplusplus
-extern  "C" {
-#  endif                        // __cplusplus
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
 
 /* Library initialization/deinitialization */
 void nfc_init(nfc_context **context) ATTRIBUTE_NONNULL(1);
@@ -116,7 +116,7 @@ int nfc_device_get_last_error(const nfc_device *pnd);
 /* Special data accessors */
 const char *nfc_device_get_name(nfc_device *pnd);
 const char *nfc_device_get_connstring(nfc_device *pnd);
-int nfc_device_get_supported_modulation(nfc_device *pnd, const nfc_mode mode,  const nfc_modulation_type **const supported_mt);
+int nfc_device_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_modulation_type **const supported_mt);
 int nfc_device_get_supported_baud_rate(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br);
 int nfc_device_get_supported_baud_rate_target_mode(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br);
 
@@ -145,75 +145,74 @@ int str_nfc_target(char **buf, const nfc_target *pnt, bool verbose);
  * @hideinitializer
  * Success (no error)
  */
-#define NFC_SUCCESS			 0
+#define NFC_SUCCESS 0
 /** @ingroup error
  * @hideinitializer
  * Input / output error, device may not be usable anymore without re-open it
  */
-#define NFC_EIO				-1
+#define NFC_EIO -1
 /** @ingroup error
  * @hideinitializer
  * Invalid argument(s)
  */
-#define NFC_EINVARG			-2
+#define NFC_EINVARG -2
 /** @ingroup error
  * @hideinitializer
  *  Operation not supported by device
  */
-#define NFC_EDEVNOTSUPP			-3
+#define NFC_EDEVNOTSUPP -3
 /** @ingroup error
  * @hideinitializer
  * No such device
  */
-#define NFC_ENOTSUCHDEV			-4
+#define NFC_ENOTSUCHDEV -4
 /** @ingroup error
  * @hideinitializer
  * Buffer overflow
  */
-#define NFC_EOVFLOW			-5
+#define NFC_EOVFLOW -5
 /** @ingroup error
  * @hideinitializer
  * Operation timed out
  */
-#define NFC_ETIMEOUT			-6
+#define NFC_ETIMEOUT -6
 /** @ingroup error
  * @hideinitializer
  * Operation aborted (by user)
  */
-#define NFC_EOPABORTED			-7
+#define NFC_EOPABORTED -7
 /** @ingroup error
  * @hideinitializer
  * Not (yet) implemented
  */
-#define NFC_ENOTIMPL			-8
+#define NFC_ENOTIMPL -8
 /** @ingroup error
  * @hideinitializer
  * Target released
  */
-#define NFC_ETGRELEASED			-10
+#define NFC_ETGRELEASED -10
 /** @ingroup error
  * @hideinitializer
  * Error while RF transmission
  */
-#define NFC_ERFTRANS			-20
+#define NFC_ERFTRANS -20
 /** @ingroup error
  * @hideinitializer
  * MIFARE Classic: authentication failed
  */
-#define NFC_EMFCAUTHFAIL		-30
+#define NFC_EMFCAUTHFAIL -30
 /** @ingroup error
  * @hideinitializer
  * Software error (allocation, file/pipe creation, etc.)
  */
-#define NFC_ESOFT			-80
+#define NFC_ESOFT -80
 /** @ingroup error
  * @hideinitializer
  * Device's internal chip error
  */
-#define NFC_ECHIP			-90
+#define NFC_ECHIP -90
 
-
-#  ifdef __cplusplus
+#ifdef __cplusplus
 }
-#  endif                        // __cplusplus
-#endif                          // _LIBNFC_H_
+#endif // __cplusplus
+#endif // _LIBNFC_H_

@@ -34,15 +34,15 @@
 
 #define _XOPEN_SOURCE 1 // To enable getopt
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
+#include <sys/stat.h> // stat
 #include <windows.h> //Sleep
-#include <sys/stat.h>   // stat
 #ifdef _MSC_VER
-#include "unistd_w.h"
 #include "getopt.h"
+#include "unistd_w.h"
 #else
 #include <unistd.h>
 #endif
@@ -54,26 +54,26 @@
 #include "crapto1.h"
 
 // Internal
+#include "main.h"
 #include "mifare.h"
 #include "nfc-utils.h"
-#include "main.h"
 
-//SLRE 
-#include "slre.h"
+// SLRE
 #include "hardnested.h"
+#include "slre.h"
 
 #define MAX_FRAME_LEN 264
 #define MAX_FILE_LEN 22 // 3 leading chars as type, followed by up to 7-byte UID (14 chars), followed by .bin and ending char (5 chars)
 
 #define PN532_CLONER_VER "0.1.1"
 
-mftag    t;
+mftag t;
 mfreader r;
 uint8_t hardnested_broken_key[6];
 
 static const nfc_modulation nm = {
-.nmt = NMT_ISO14443A,
-.nbr = NBR_106,
+  .nmt = NMT_ISO14443A,
+  .nbr = NBR_106,
 };
 
 nfc_context *context;
@@ -99,13 +99,11 @@ static uint8_t last_read_uid[7];
 static mifare_classic_tag mtDump;
 static char file_name[MAX_FILE_LEN];
 
-
-static const uint8_t default_key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+static const uint8_t default_key[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static const uint8_t blank_key[6] = { 0 };
-static const uint8_t default_acl[] = {0xff, 0x07, 0x80, 0x69};
+static const uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
 static const uint8_t default_data_block[16] = { 0 };
-static const uint8_t default_trailer_block[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-
+static const uint8_t default_trailer_block[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 static void pn532_cloner_usage()
 {
@@ -199,10 +197,10 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
             num_of_exploited_keys++;
           }
         } else {
-            if (res != NFC_ERFTRANS) {
-              nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              return -1;
-            }
+          if (res != NFC_ERFTRANS) {
+            nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
+            return -1;
+          }
           if (!mf_anticollision(t, r))
             return -1;
         }
@@ -215,13 +213,13 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
     if (i == 0 && test_block_0_only)
       break;
   }
-  //printf("Debug! num_of_exploited_keys = %d\n", num_of_exploited_keys);
+  // printf("Debug! num_of_exploited_keys = %d\n", num_of_exploited_keys);
   return num_of_exploited_keys;
 }
 
 bool if_tag_is_blank(nfc_iso14443a_info tag_info)
 {
-  for (uint8_t i = 0; i < tag_info.szUidLen; i ++)
+  for (uint8_t i = 0; i < tag_info.szUidLen; i++)
     if (tag_info.abtUid[i])
       return false;
   return true;
@@ -254,7 +252,6 @@ static uint32_t get_trailer_block(uint32_t uiFirstBlock)
   return trailer_block;
 }
 */
-
 
 // Calculate if we reached the 1st block that needs authentication
 static bool if_need_authenticate(uint16_t current_block)
@@ -325,7 +322,7 @@ bool write_blank_mfc(bool write_block_zero)
   for (; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach new block and need to actually write a data on
     if (if_need_authenticate(current_block)) {
-      //printf("Block %u needs authentication\n", current_block);
+      // printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
       if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
@@ -341,7 +338,7 @@ bool write_blank_mfc(bool write_block_zero)
         printf("Failed at writing block %d \n", current_block);
         return false;
       }
-      //printf("Block %u write success.\n", current_block);
+      // printf("Block %u write success.\n", current_block);
     }
   }
 
@@ -353,7 +350,7 @@ bool write_blank_mfc(bool write_block_zero)
 void sanitize_mfc_buffer(void)
 {
   memset(&mtDump, 0, sizeof(mifare_classic_block));
-  for (uint16_t i = 3; i < NR_BLOCKS_4k; i+=4) {
+  for (uint16_t i = 3; i < NR_BLOCKS_4k; i += 4) {
     if (is_trailer_block(i)) {
       memcpy(mtDump.amb[i].mbt.abtAccessBits, default_acl, sizeof(default_acl));
     }
@@ -375,7 +372,7 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
 }
 
 // Modern MIFARE Classic tags are all MIFARE Classic EV1 tags, which means they are not vulnerable to old faster attacks
-// such as Darkside attack, nested attack. Therefore, we only use hardnested attack to recover the unknown keys 
+// such as Darkside attack, nested attack. Therefore, we only use hardnested attack to recover the unknown keys
 bool read_mfc()
 {
   int i;
@@ -387,10 +384,10 @@ bool read_mfc()
 
   // Array with default Mifare Classic keys
   uint8_t defaultKeys[][6] = {
-    {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, // Default key (first key used by program if no user defined key)
-    {0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5}, // NFCForum MAD key
-    {0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5},
-    {0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7}, // NFCForum content key
+    { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, // Default key (first key used by program if no user defined key)
+    { 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5 }, // NFCForum MAD key
+    { 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5 },
+    { 0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7 }, // NFCForum content key
   };
 
   static mifare_param mp;
@@ -417,54 +414,53 @@ bool read_mfc()
     return false;
   }
 
-  t.authuid = (uint32_t) bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+  t.authuid = (uint32_t)bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
 
   // Get Mifare Classic type from SAK
   // see http://www.nxp.com/documents/application_note/AN10833.pdf Section 3.2
-  switch (t.nt.nti.nai.btSak)
-  {
-    case 0x01:
-    case 0x08:
-    case 0x88:
-    case 0x28:
-      if (get_rats_is_2k(t, r)) {
-          printf("MIFARE Plus 2K tagis not supported\n");
-          return false;
-      } else {
-        t.num_sectors = NR_TRAILERS_1k;
-        t.num_blocks = NR_BLOCKS_1k;
-        if (t.nt.nti.nai.szUidLen == 4)
-          printf("Detected MIFARE Classic 1K 4-Byte tag\n");
-        else if (t.nt.nti.nai.szUidLen == 7)
-          printf("Detected MIFARE Classic 1K 7-Byte tag\n");
-        else {
-          printf("Unsupported UID length\n");
-          return false;
-        }
-      }
-      break;
-    case 0x09:
-      printf("MIFARE Classic Mini tag is not supported\n");
+  switch (t.nt.nti.nai.btSak) {
+  case 0x01:
+  case 0x08:
+  case 0x88:
+  case 0x28:
+    if (get_rats_is_2k(t, r)) {
+      printf("MIFARE Plus 2K tagis not supported\n");
       return false;
-      break;
-    case 0x18:
-      t.num_sectors = NR_TRAILERS_4k;
-      t.num_blocks = NR_BLOCKS_4k;
+    } else {
+      t.num_sectors = NR_TRAILERS_1k;
+      t.num_blocks = NR_BLOCKS_1k;
       if (t.nt.nti.nai.szUidLen == 4)
-        printf("Detected MIFARE Classic 4K 4-Byte tag\n");
+        printf("Detected MIFARE Classic 1K 4-Byte tag\n");
       else if (t.nt.nti.nai.szUidLen == 7)
-        printf("Detected MIFARE Classic 4K 7-Byte tag\n");
+        printf("Detected MIFARE Classic 1K 7-Byte tag\n");
       else {
         printf("Unsupported UID length\n");
         return false;
       }
-      break;
-    default:
-      ERR("Cannot determine card type from SAK");
+    }
+    break;
+  case 0x09:
+    printf("MIFARE Classic Mini tag is not supported\n");
+    return false;
+    break;
+  case 0x18:
+    t.num_sectors = NR_TRAILERS_4k;
+    t.num_blocks = NR_BLOCKS_4k;
+    if (t.nt.nti.nai.szUidLen == 4)
+      printf("Detected MIFARE Classic 4K 4-Byte tag\n");
+    else if (t.nt.nti.nai.szUidLen == 7)
+      printf("Detected MIFARE Classic 4K 7-Byte tag\n");
+    else {
+      printf("Unsupported UID length\n");
       return false;
+    }
+    break;
+  default:
+    ERR("Cannot determine card type from SAK");
+    return false;
   }
 
-  t.sectors = (void *) calloc(t.num_sectors, sizeof(sector));
+  t.sectors = (void *)calloc(t.num_sectors, sizeof(sector));
   if (t.sectors == NULL) {
     ERR("Cannot allocate memory for t.sectors");
     return false;
@@ -486,7 +482,7 @@ bool read_mfc()
   generate_file_name(file_name, t.num_blocks, t.nt.nti.nai.szUidLen, t.nt.nti.nai.abtUid);
 
   // Check if the file is already exist (data is already on file)
-  struct stat buffer;   
+  struct stat buffer;
   if (!stat(file_name, &buffer)) {
     printf("This tag is already on file\n");
     printf("To re-read this file, please delete %s file and retry\n", file_name);
@@ -530,7 +526,7 @@ bool read_mfc()
     printf("Unencrypted MIFARE Classic tag\n");
     goto read_tag;
   }
-  
+
   printf("This tag is encrypted by %u encryption keys.\n", remaining_keys_to_be_found);
   printf("The ETA to crack all the encryption key is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 8);
   remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
@@ -540,7 +536,7 @@ bool read_mfc()
   uint8_t hardnested_src_key_type;
   uint8_t hardnested_src_key[6];
   i = t.num_sectors - 1;
-  while(true) {
+  while (true) {
     if (t.sectors[i].foundKeyA) {
       hardnested_src_sector = i;
       hardnested_src_key_type = MC_AUTH_A;
@@ -561,7 +557,7 @@ bool read_mfc()
       if (!mf_configure(r.pdi))
         goto out;
       if (!mf_anticollision(t, r))
-          goto out;
+        goto out;
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
@@ -578,7 +574,7 @@ bool read_mfc()
       if (!mf_configure(r.pdi))
         goto out;
       if (!mf_anticollision(t, r))
-          goto out;
+        goto out;
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
@@ -796,8 +792,8 @@ bool write_mfc(bool force, char *file_name)
 {
   int tag_count;
   int res;
-  uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
-  uint8_t abtRx[16]={0};
+  uint8_t abtCmd[21] = { 0x30, 0x00 }; // Gen 3 Magic command for reading Block 0
+  uint8_t abtRx[16] = { 0 };
 
   // If the file_name starts with C, that indicates a MIFARE Classic binary file is parsed in
   // Try to load this file into the global buffer, if loading file failed, stop writing the file
@@ -810,7 +806,7 @@ bool write_mfc(bool force, char *file_name)
 
   if (!mf_configure(r.pdi))
     return false;
-  
+
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
     return false;
@@ -819,7 +815,7 @@ bool write_mfc(bool force, char *file_name)
     return false;
   }
 
-  //Use raw send/receive methods
+  // Use raw send/receive methods
   if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
     nfc_perror(r.pdi, "nfc_configure");
     return false;
@@ -859,7 +855,7 @@ bool write_mfc(bool force, char *file_name)
 
     if (!mf_configure(r.pdi))
       return false;
-  
+
     if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
       nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
       return false;
@@ -867,7 +863,7 @@ bool write_mfc(bool force, char *file_name)
       ERR("No tag found.");
       return false;
     }
-    
+
     if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
       nfc_perror(r.pdi, "nfc_configure");
       return false;
@@ -904,12 +900,12 @@ bool clean_mfc(bool force)
 {
   int tag_count;
   int res;
-  uint8_t abtCmd[21]={0x30, 0x00}; // Gen 3 Magic command for reading Block 0
-  uint8_t abtRx[16]={0};
+  uint8_t abtCmd[21] = { 0x30, 0x00 }; // Gen 3 Magic command for reading Block 0
+  uint8_t abtRx[16] = { 0 };
 
   if (!mf_configure(r.pdi))
     return false;
-  
+
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
     return false;
@@ -918,7 +914,7 @@ bool clean_mfc(bool force)
     return false;
   }
 
-  //Use raw send/receive methods
+  // Use raw send/receive methods
   if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
     nfc_perror(r.pdi, "nfc_configure");
     return false;
@@ -945,7 +941,7 @@ bool clean_mfc(bool force)
 
     if (!mf_configure(r.pdi))
       return false;
-  
+
     if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
       nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
       return false;
@@ -953,7 +949,7 @@ bool clean_mfc(bool force)
       ERR("No tag found.");
       return false;
     }
-    
+
     if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
       nfc_perror(r.pdi, "nfc_configure");
       return false;
@@ -979,7 +975,7 @@ bool clean_mfc(bool force)
 
 int main(int argc, char *const argv[])
 {
-  char line[3 + MAX_FILE_LEN]= { 0 }; // Leading command + space + carriage return = need extra 3 bytes
+  char line[3 + MAX_FILE_LEN] = { 0 }; // Leading command + space + carriage return = need extra 3 bytes
 
   // Print banner and version
   printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
@@ -993,7 +989,7 @@ int main(int argc, char *const argv[])
     }
 
     pn532_cloner_usage();
-    
+
     fgets(line, sizeof(line), stdin);
     if (line[0] == 'r' || line[0] == 'R')
       read_mfc();
@@ -1002,14 +998,12 @@ int main(int argc, char *const argv[])
         write_mfc(true, line + 2);
       else
         write_mfc(false, line + 2);
-    }
-    else if (line[0] == 'c' || line[0] == 'C') {
+    } else if (line[0] == 'c' || line[0] == 'C') {
       if (line[2] == 'F' || line[2] == 'f')
         clean_mfc(true);
       else
         clean_mfc(false);
-    }
-    else if (line[0] == 'E' || line[0] == 'e')
+    } else if (line[0] == 'E' || line[0] == 'e')
       break;
 
     nfc_close(r.pdi);
@@ -1098,7 +1092,7 @@ bool get_rats_is_2k(mftag t, mfreader r)
 {
   int res;
   uint8_t abtRx[MAX_FRAME_LEN];
-  uint8_t  abtRats[2] = { 0xe0, 0x50};
+  uint8_t abtRats[2] = { 0xe0, 0x50 };
   // Use raw send/receive methods
   if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
     nfc_perror(r.pdi, "nfc_configure");
@@ -1126,19 +1120,18 @@ bool get_rats_is_2k(mftag t, mfreader r)
   if (res >= 10) {
     printf("ATS %02X%02X%02X%02X%02X|%02X%02X%02X%02X%02X\n", res, abtRx[0], abtRx[1], abtRx[2], abtRx[3], abtRx[4], abtRx[5], abtRx[6], abtRx[7], abtRx[8]);
     return ((abtRx[5] == 0xc1) && (abtRx[6] == 0x05)
-            && (abtRx[7] == 0x2f) && (abtRx[8] == 0x2f)
-            && ((t.nt.nti.nai.abtAtqa[1] & 0x02) == 0x00));
+        && (abtRx[7] == 0x2f) && (abtRx[8] == 0x2f)
+        && ((t.nt.nti.nai.abtAtqa[1] & 0x02) == 0x00));
   } else {
-    //printf("ATS len = %d\n", res);
+    // printf("ATS len = %d\n", res);
     return false;
   }
 }
 
-
 // Return the median value from the nonce distances array
 uint32_t median(denonce d)
 {
-  int middle = (int) d.num_distances / 2;
+  int middle = (int)d.num_distances / 2;
   qsort(d.distances, d.num_distances, sizeof(uint32_t), compar_int);
 
   if (d.num_distances % 2 == 1) {
@@ -1152,7 +1145,7 @@ uint32_t median(denonce d)
 
 int compar_int(const void *a, const void *b)
 {
-  return (*(uint64_t *)b - * (uint64_t *)a);
+  return (*(uint64_t *)b - *(uint64_t *)a);
 }
 
 // Compare countKeys structure
@@ -1164,15 +1157,13 @@ int compar_special_int(const void *a, const void *b)
 // Return 1 if the nonce is invalid else return 0
 int valid_nonce(uint32_t Nt, uint32_t NtEnc, uint32_t Ks1, uint8_t *parity)
 {
-  return ((odd_parity((Nt >> 24) & 0xFF) == ((parity[0]) ^ odd_parity((NtEnc >> 24) & 0xFF) ^ BIT(Ks1, 16))) & \
-          (odd_parity((Nt >> 16) & 0xFF) == ((parity[1]) ^ odd_parity((NtEnc >> 16) & 0xFF) ^ BIT(Ks1, 8))) & \
-          (odd_parity((Nt >> 8) & 0xFF) == ((parity[2]) ^ odd_parity((NtEnc >> 8) & 0xFF) ^ BIT(Ks1, 0)))) ? 1 : 0;
+  return ((odd_parity((Nt >> 24) & 0xFF) == ((parity[0]) ^ odd_parity((NtEnc >> 24) & 0xFF) ^ BIT(Ks1, 16))) & (odd_parity((Nt >> 16) & 0xFF) == ((parity[1]) ^ odd_parity((NtEnc >> 16) & 0xFF) ^ BIT(Ks1, 8))) & (odd_parity((Nt >> 8) & 0xFF) == ((parity[2]) ^ odd_parity((NtEnc >> 8) & 0xFF) ^ BIT(Ks1, 0)))) ? 1 : 0;
 }
 
 void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest)
 {
   while (len--) {
-    dest[len] = (uint8_t) n;
+    dest[len] = (uint8_t)n;
     n >>= 8;
   }
 }
