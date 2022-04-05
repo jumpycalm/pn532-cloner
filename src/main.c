@@ -528,7 +528,7 @@ bool read_mfc()
   }
 
   printf("This tag is encrypted by %u encryption keys.\n", remaining_keys_to_be_found);
-  printf("The ETA to crack all the encryption key is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 8);
+  printf("The ETA to crack all the encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
   remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
 
   // Use hardnested to crack the unknown keys
@@ -554,37 +554,47 @@ bool read_mfc()
 
   for (i = 0; i < t.num_sectors; i++) {
     if (!t.sectors[i].foundKeyA) {
-      if (!mf_configure(r.pdi))
-        goto out;
-      if (!mf_anticollision(t, r))
-        goto out;
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A))
         goto out;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
-      test_key_res = test_keys(&mp, false);
-      if (test_key_res < 0)
-        goto out;
-      else
-        remaining_keys_to_be_found -= test_key_res;
-      // Print overall status
-      printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
-    }
-
-    if (!t.sectors[i].foundKeyB) {
       if (!mf_configure(r.pdi))
         goto out;
       if (!mf_anticollision(t, r))
         goto out;
-      if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
-        goto out;
-      memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       test_key_res = test_keys(&mp, false);
       if (test_key_res < 0)
         goto out;
-      else
-        remaining_keys_to_be_found -= test_key_res;
+      if (!test_key_res) {
+        printf("Hardnested found the wrong key, please report bug!\n");
+        goto out;
+      }
+      remaining_keys_to_be_found -= test_key_res;
       // Print overall status
       printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
+      if (remaining_keys_to_be_found)
+        printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
+    }
+
+    if (!t.sectors[i].foundKeyB) {
+      if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
+        goto out;
+      memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
+      if (!mf_configure(r.pdi))
+        goto out;
+      if (!mf_anticollision(t, r))
+        goto out;
+      test_key_res = test_keys(&mp, false);
+      if (test_key_res < 0)
+        goto out;
+      if (!test_key_res) {
+        printf("Hardnested found the wrong key, please report bug!\n");
+        goto out;
+      }
+      remaining_keys_to_be_found -= test_key_res;
+      // Print overall status
+      printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
+      if (remaining_keys_to_be_found)
+        printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
     }
 
     if (!remaining_keys_to_be_found)

@@ -1153,30 +1153,228 @@ static bool mf_enhanced_auth(uint8_t src_sector, uint8_t src_key_type, uint8_t *
   return true;
 }
 
+#define MAX_ENC_NONCE_BUFFER 5000 // If we need to collect more than 5000 nonces, something is wrong
+static bool continue_acquire_nonces;
+static bool acquire_nonce_status;
+static uint32_t enc_byte[MAX_ENC_NONCE_BUFFER];
+static uint8_t par_bit[MAX_ENC_NONCE_BUFFER];
+static uint16_t new_nonce_num;
+static uint8_t nonce_src_sector;
+static uint8_t nonce_src_key_type;
+static uint8_t *nonce_key;
+static uint8_t nonce_trg_sector;
+static uint8_t nonce_trg_key_type;
+
+static void *acquire_enc_nonces(void *arguments)
+{
+  uint8_t Nr[4] = { 0 }; // Reader nonce
+  uint8_t Auth[4] = { 0 };
+  uint8_t AuthEnc[4] = { 0 };
+
+  uint8_t AuthEncPar[8] = { 0 };
+
+  uint8_t ArEnc[8] = { 0 };
+  uint8_t ArEncPar[8] = { 0 };
+
+  uint8_t Rx[MAX_FRAME_LEN]; // Tag response
+  uint8_t RxPar[MAX_FRAME_LEN]; // Tag response
+
+  uint32_t Nt;
+
+  int res;
+  uint32_t i;
+  uint8_t p;
+
+  while (continue_acquire_nonces) {
+    struct Crypto1State *pcs;
+    if (!mf_configure(r.pdi)) {
+      acquire_nonce_status = false;
+      return;
+    }
+
+    if (!mf_anticollision(t, r)) {
+      acquire_nonce_status = false;
+      return;
+    }
+
+    // Prepare AUTH command
+    Auth[0] = nonce_src_key_type;
+    Auth[1] = get_leading_block_num_from_sector_num(nonce_src_sector); // block
+
+    iso14443a_crc_append(Auth, 2);
+    // fprintf(stdout, "\nMode: %c, Auth command:\t", mode);
+    // print_hex(Auth, 4);
+
+    // We need full control over the CRC
+    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, false) < 0) {
+      printf("nfc_device_set_property_bool crc\n");
+      acquire_nonce_status = false;
+      return;
+    }
+
+    // Request plain tag-nonce
+    // TODO: Set NP_EASY_FRAMING option only once if possible
+    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+      printf("nfc_device_set_property_bool framing\n");
+      acquire_nonce_status = false;
+      return;
+    }
+
+    if ((res = nfc_initiator_transceive_bytes(
+             r.pdi, Auth, 4, Rx, sizeof(Rx), 0))
+        < 0) {
+      printf("Error while requesting plain tag-nonce, %d\n", res);
+      acquire_nonce_status = false;
+      return;
+    }
+
+    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, true) < 0) {
+      printf("nfc_device_set_property_bool\n");
+      acquire_nonce_status = false;
+      return;
+    }
+    // print_hex(Rx, res);
+
+    // Save the tag nonce (Nt)
+    Nt = bytes_to_num(Rx, res);
+
+    // Init the cipher with nonce_key {0..47} bits
+    pcs = crypto1_create(bytes_to_num(nonce_key, 6));
+
+    // Load (plain) uid^nt into the cipher {48..79} bits
+    crypto1_word(pcs, bytes_to_num(Rx, res) ^ t.authuid, 0);
+
+    // Generate (encrypted) nr+parity by loading it into the cipher
+    for (i = 0; i < 4; i++) {
+      // Load in, and encrypt the reader nonce (Nr)
+      ArEnc[i] = crypto1_byte(pcs, Nr[i], 0) ^ Nr[i];
+      ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nr[i]);
+    }
+    // Skip 32 bits in the pseudo random generator
+    Nt = prng_successor(Nt, 32);
+    // Generate reader-answer from tag-nonce
+    for (i = 4; i < 8; i++) {
+      // Get the next random byte
+      Nt = prng_successor(Nt, 8);
+      // Encrypt the reader-answer (Nt' = suc2(Nt))
+      ArEnc[i] = crypto1_byte(pcs, 0x00, 0) ^ (Nt & 0xff);
+      ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nt);
+    }
+
+    // Finally we want to send arbitrary parity bits
+    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, false) < 0) {
+      printf("nfc_device_set_property_bool parity\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      return;
+    }
+
+    // Transmit reader-answer
+    // fprintf(stdout, "\t{Ar}:\t");
+    // print_hex_par(ArEnc, 64, ArEncPar);
+    if (((res = nfc_initiator_transceive_bits(r.pdi, ArEnc, 64, ArEncPar, Rx, sizeof(Rx), RxPar)) < 0) || (res != 32)) {
+      printf("Reader-answer transfer error, exiting..\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      return;
+    }
+
+    // Now print the answer from the tag
+    // fprintf(stdout, "\t{At}:\t");
+    // print_hex_par(Rx,res,RxPar);
+
+    // Decrypt the tag answer and verify that suc3(Nt) is At
+    Nt = prng_successor(Nt, 32);
+    if (!((crypto1_word(pcs, 0x00, 0) ^ bytes_to_num(Rx, 4)) == (Nt & 0xFFFFFFFF))) {
+      printf("[At] is not Suc3(Nt), something is wrong, exiting..\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      return;
+    }
+    // fprintf(stdout, "Authentication completed.\n\n");
+
+    // Again, prepare the Auth command with MC_AUTH_A, recover the block and
+    // CRC
+    Auth[0] = nonce_trg_key_type;
+    Auth[1] = get_leading_block_num_from_sector_num(nonce_trg_sector); // block
+    iso14443a_crc_append(Auth, 2);
+
+    // Encryption of the Auth command, sending the Auth command
+    for (i = 0; i < 4; i++) {
+      AuthEnc[i] = crypto1_byte(pcs, 0, 0) ^ Auth[i];
+      // Encrypt the parity bits with the 4 plaintext bytes
+      AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Auth[i]);
+    }
+    if (((res = nfc_initiator_transceive_bits(r.pdi, AuthEnc, 32, AuthEncPar, Rx, sizeof(Rx), RxPar)) < 0) || (res != 32)) {
+      printf("while requesting encrypted tag-nonce\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      return;
+    }
+
+    // Save the encrypted nonce
+    enc_byte[new_nonce_num] = bytes_to_num(Rx, 4);
+
+    par_bit[new_nonce_num] = 0;
+    for (i = 0; i < 4; i++) {
+      p = oddparity(Rx[i]);
+      if (RxPar[i] != oddparity(Rx[i]))
+        p ^= 1;
+      par_bit[new_nonce_num] <<= 1;
+      par_bit[new_nonce_num] |= p;
+    }
+
+    // Make sure we don't overflow the array holding the nonces
+    if (new_nonce_num >= MAX_ENC_NONCE_BUFFER) {
+      printf("Too many nonces need to be collected, something is wrong\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      return;
+    }
+    new_nonce_num++;
+
+    crypto1_destroy(pcs);
+  }
+}
+
 static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *key, uint8_t trg_sector, uint8_t trg_key_type)
 {
   hardnested_stage = CHECK_1ST_BYTES;
   bool acquisition_completed = false;
   float brute_force;
   bool reported_suma8 = false;
+  bool success = false;
+  uint16_t i;
+  uint16_t processed_nonces = 0;
 
   num_acquired_nonces = 0;
 
-  //
-  uint32_t enc_bytes = 0;
-  uint8_t parbits = 0;
+  // Configure variables for the thread worker
+  nonce_src_sector = src_sector;
+  nonce_src_key_type = src_key_type;
+  nonce_key = key;
+  nonce_trg_sector = trg_sector;
+  nonce_trg_key_type = trg_key_type;
+  continue_acquire_nonces = true;
+  acquire_nonce_status = true;
+  new_nonce_num = 0;
+  pthread_t thread_nonces;
+  pthread_create(&thread_nonces, NULL, acquire_enc_nonces, NULL);
+
   do {
-    nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
-    nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
-    if (!mf_enhanced_auth(src_sector, src_key_type, key, trg_sector, trg_key_type, t, r, &enc_bytes, &parbits))
-      return false;
+    // Check if there's any issue acquiring the encrypted nonces such as tag is removed
+    if (!acquire_nonce_status)
+      goto out;
+    // If the thread worker hasn't collected any nonce yet, wait for 1 second
+    if (processed_nonces >= new_nonce_num) {
+      Sleep(1000);
+      continue;
+    }
+    // Add collected nonces to the nonce list
+    for (i = processed_nonces; i < new_nonce_num; i++)
+      num_acquired_nonces += add_nonce(enc_byte[i], par_bit[i]);
+    processed_nonces = i; // Cannot use new_nonce_num as new_nonce_num can be changed by the worker thread.
 
-    if (!mf_configure(r.pdi))
-      return false;
-    if (!mf_anticollision(t, r))
-      return false;
-
-    num_acquired_nonces += add_nonce(enc_bytes, parbits);
     if (first_byte_num == 256) {
       if (hardnested_stage == CHECK_1ST_BYTES) {
         for (uint16_t i = 0; i < NUM_SUMS; i++) {
@@ -1204,9 +1402,16 @@ static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *ke
       hardnested_print_progress(num_acquired_nonces, "Apply bit flip properties", brute_force, 0, trg_sector, trg_key_type, false);
     }
   } while (!acquisition_completed);
+  success = true;
+out:
+  continue_acquire_nonces = false;
+  pthread_join(thread_nonces, NULL);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
-  return true;
+  if (success)
+    return true;
+  else
+    return false;
 }
 
 static inline bool invariant_holds(uint_fast8_t byte_diff, uint_fast32_t state1, uint_fast32_t state2, uint_fast8_t bit, uint_fast8_t state_bit)
