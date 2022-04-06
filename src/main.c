@@ -723,10 +723,10 @@ out:
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
 
   if (read_success) {
-    printf("Read tag success!\n");
+    printf("\nRead tag success!\n");
     return true;
   } else {
-    printf("Read tag fail!\n");
+    printf("\nRead tag fail!\n");
     return false;
   }
 }

@@ -151,19 +151,19 @@ static void *
       const uint64_t key = CRACK_STATES_BITSLICED(thread_arg->cuid, thread_arg->best_first_bytes, bucket, &keys_found, &num_keys_tested, nonces_to_bruteforce, bf_test_nonce_2nd_byte, thread_arg->nonces);
       if (key != -1) {
         __sync_fetch_and_add(&keys_found, 1);
-        char progress_text[80];
+        char progress_text[80] = { 0 };
         sprintf(progress_text, "Brute force phase completed. Key found: %012" PRIx64, key);
         num_to_bytes(key, 6, hardnested_broken_key);
-        hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, 0.0, 0, thread_arg->trgBlock, thread_arg->trgKey, true);
+        hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, 0.0, thread_arg->trgBlock, thread_arg->trgKey, true);
         break;
       } else if (keys_found) {
         break;
       } else {
         if (!thread_arg->silent) {
-          char progress_text[80];
+          char progress_text[80] = { 0 };
           sprintf(progress_text, "Brute force phase: %6.02f%%", 100.0 * (float)num_keys_tested / (float)(thread_arg->maximum_states));
           float remaining_bruteforce = thread_arg->nonces[thread_arg->best_first_bytes[0]].expected_num_brute_force - (float)num_keys_tested / 2;
-          hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, remaining_bruteforce, 5000, thread_arg->trgBlock, thread_arg->trgKey, true);
+          hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, remaining_bruteforce, thread_arg->trgBlock, thread_arg->trgKey, true);
         }
       }
     }
