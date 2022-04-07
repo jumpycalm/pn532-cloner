@@ -498,7 +498,7 @@ bool read_mfc()
     return false;
   }
 
-  print_nfc_target(&t.nt, true);
+  print_nfc_target(&t.nt, false);
 
   // Test the default keys
   remaining_keys_to_be_found = t.num_sectors * 2;
