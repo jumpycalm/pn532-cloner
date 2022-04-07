@@ -535,7 +535,7 @@ bool read_mfc()
     goto read_tag;
   }
 
-  printf("This tag is encrypted by %u encryption keys.\n", remaining_keys_to_be_found);
+  printf("This tag is encrypted with %u encryption keys.\n", remaining_keys_to_be_found);
   printf("The ETA to crack all the encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
   remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
 
