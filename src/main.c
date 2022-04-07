@@ -716,6 +716,8 @@ out:
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
 
+  printf("\n");
+
   if (hardnested_runs)
     printf("Total hardnested key crack runs performed: %u.\n", hardnested_runs);
   printf("Total time elapsed reading this tag: %llu s.\n", (msclock() - start_time) / 1000);
