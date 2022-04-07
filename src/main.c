@@ -65,6 +65,8 @@
 #define MAX_FRAME_LEN 264
 #define MAX_FILE_LEN 22 // 3 leading chars as type, followed by up to 7-byte UID (14 chars), followed by .bin and ending char (5 chars)
 
+#define WHITE_SPACE "                                                                            "
+
 #define PN532_CLONER_VER "0.1.1"
 
 mftag t;
@@ -381,6 +383,9 @@ bool read_mfc()
   int remaining_keys_to_be_found;
   int remaining_keys_to_be_found_before_hardnested;
   int8_t test_key_res;
+  int res_auth;
+  int res_read;
+  bool try_key_b;
 
   // Array with default Mifare Classic keys
   uint8_t defaultKeys[][6] = {
@@ -601,85 +606,69 @@ bool read_mfc()
       break;
   }
 
-  printf("All keys found! Reading the tag, please wait up to 10s\n");
-
 read_tag:
+  if (t.num_sectors == NR_TRAILERS_1k)
+    printf("All keys found! Reading the tag.\n");
+  else
+    printf("All keys found! Reading the tag, please wait up to 6s.\n");
+
   i = t.num_sectors; // Sector counter
-  // Read all blocks
-  for (block = t.num_blocks; block >= 0; block--) {
+  // Read all blocks (no need to read Block 0)
+  for (block = t.num_blocks; block > 0; block--) {
     is_trailer_block(block) ? i-- : i;
 
-    // Try A key, auth() + read()
-    memcpy(mp.mpa.abtKey, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
-    int res;
-    if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, block, &mp)) < 0) {
-      if (res != NFC_EMFCAUTHFAIL) {
-        nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-        goto out;
-      }
-      if (!mf_configure(r.pdi))
-        goto out;
-      if (!mf_anticollision(t, r))
-        goto out;
-    } else { // and Read
-      if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) >= 0) {
-        fprintf(stdout, "Block %02d, type %c, key %012llx :", block, 'A', bytes_to_num(t.sectors[i].KeyA, 6));
-        print_hex(mp.mpd.abtData, 16);
-        if (!mf_configure(r.pdi))
-          goto out;
-        if (!mf_select_tag(r.pdi, &(t.nt)))
-          goto out;
-      } else {
-        // Error, now try read() with B key
-        if (res != NFC_ERFTRANS) {
-          nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-          goto out;
-        }
-        if (!mf_configure(r.pdi))
-          goto out;
-        if (!mf_anticollision(t, r))
-          goto out;
-        memcpy(mp.mpa.abtKey, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
-        if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, block, &mp)) < 0) {
-          if (res != NFC_EMFCAUTHFAIL) {
-            nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-            goto out;
-          }
-          if (!mf_configure(r.pdi))
-            goto out;
-          if (!mf_anticollision(t, r))
-            goto out;
-        } else { // and Read
-          if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) >= 0) {
-            fprintf(stdout, "Block %02d, type %c, key %012llx :", block, 'B', bytes_to_num(t.sectors[i].KeyB, 6));
-            print_hex(mp.mpd.abtData, 16);
-            if (!mf_configure(r.pdi))
-              goto out;
-            if (!mf_select_tag(r.pdi, &(t.nt)))
-              goto out;
-          } else {
-            if (res != NFC_ERFTRANS) {
-              nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
-              return false;
-            }
-            if (!mf_configure(r.pdi))
-              goto out;
-            if (!mf_anticollision(t, r))
-              goto out;
-            // ERR ("Error: Read B");
-          }
-        }
-      }
-    }
+    // No need to read trailer block
     if (is_trailer_block(block)) {
-      // Copy the keys over from our key dump and store the retrieved access bits
       memcpy(mtDump.amb[block].mbt.abtKeyA, t.sectors[i].KeyA, 6);
       memcpy(mtDump.amb[block].mbt.abtKeyB, t.sectors[i].KeyB, 6);
       memcpy(mtDump.amb[block].mbt.abtAccessBits, default_acl, sizeof(default_acl)); // Never use the source tag's access bit to avoid breaking tags
-    } else
-      memcpy(mtDump.amb[block].mbd.abtData, mp.mpd.abtData, 16);
+      continue;
+    }
+
+    // Three possibility of mfoc_nfc_initiator_mifare_cmd return code:
+    // 0 success
+    // NFC_ERFTRANS: Key is correct, but not enough privilege (Need to try another key)
+    // Other negative value, something is not correct, go to out
+    try_key_b = false;
+    memcpy(mp.mpa.abtKey, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
+    res_auth = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, block, &mp);
+    if (!res_auth) {
+      res_read = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp);
+      if (!res_read) {
+        printf("\r" WHITE_SPACE);
+        printf("\r Read Block %u/%u with key A success!", block, t.num_blocks);
+      } else if (res_read == NFC_ERFTRANS)
+        try_key_b = true;
+      else
+        goto out;
+    } else if (res_read == NFC_ERFTRANS)
+      try_key_b = true;
+    else {
+      printf("\r" WHITE_SPACE);
+      printf("\r Read Block %u/%u with key A failed!", block, t.num_blocks);
+      goto out;
+    }
+
+    if (try_key_b) {
+      memcpy(mp.mpa.abtKey, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
+      if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, block, &mp)) {
+        printf("\r" WHITE_SPACE);
+        printf("\r Authentic Block %u/%u with key B failed!", block, t.num_blocks);
+        goto out;
+      }
+      if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) {
+        printf("\r" WHITE_SPACE);
+        printf("\r Read Block %u/%u with key B failed!", block, t.num_blocks);
+        goto out;
+      }
+    }
+
+    memcpy(mtDump.amb[block].mbd.abtData, mp.mpd.abtData, 16);
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
   }
+
+  // Up till this point, we have read the tag successfully
+  printf("\n");
 
   // Save the information to global buffer in order to feed into the write function
   if (t.nt.nti.nai.szUidLen == 4) {
