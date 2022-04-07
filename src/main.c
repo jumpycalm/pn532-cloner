@@ -34,6 +34,7 @@
 
 #define _XOPEN_SOURCE 1 // To enable getopt
 
+#include "util_posix.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -386,6 +387,8 @@ bool read_mfc()
   int res_auth;
   int res_read;
   bool try_key_b;
+  uint64_t start_time = msclock();
+  uint8_t hardnested_runs = 0;
 
   // Array with default Mifare Classic keys
   uint8_t defaultKeys[][6] = {
@@ -561,6 +564,7 @@ bool read_mfc()
     if (!t.sectors[i].foundKeyA) {
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A))
         goto out;
+      hardnested_runs++;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       if (!mf_configure(r.pdi))
         goto out;
@@ -583,6 +587,7 @@ bool read_mfc()
     if (!t.sectors[i].foundKeyB) {
       if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B))
         goto out;
+      hardnested_runs++;
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       if (!mf_configure(r.pdi))
         goto out;
@@ -710,6 +715,10 @@ out:
   // Reset the "advanced" configuration to normal
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
+
+  if (hardnested_runs)
+    printf("Total hardnested key crack runs performed: %u.\n", hardnested_runs);
+  printf("Total time elapsed reading this tag: %llu s.\n", (msclock() - start_time) / 1000);
 
   if (read_success) {
     printf("\nRead tag success!\n");

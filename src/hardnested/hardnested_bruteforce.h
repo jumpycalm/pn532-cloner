@@ -28,8 +28,7 @@ typedef struct {
 } statelist_t;
 
 extern void prepare_bf_test_nonces(noncelist_t *nonces, uint8_t best_first_byte);
-extern bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint32_t num_acquired_nonces, uint64_t maximum_states, noncelist_t *nonces, uint8_t *best_first_bytes, uint8_t trgBlock, uint8_t trgKey);
-extern float brute_force_benchmark();
+extern bool brute_force_bs(statelist_t *candidates, uint32_t cuid, uint32_t num_acquired_nonces, uint64_t maximum_states, noncelist_t *nonces, uint8_t *best_first_bytes, uint8_t trgBlock, uint8_t trgKey);
 extern uint8_t trailing_zeros(uint8_t byte);
 extern bool verify_key(uint32_t cuid, noncelist_t *nonces, uint8_t *best_first_bytes, uint32_t odd, uint32_t even);
 

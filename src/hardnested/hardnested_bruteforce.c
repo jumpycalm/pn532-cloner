@@ -131,7 +131,6 @@ static void *
 {
 
   struct arg {
-    bool silent;
     int thread_ID;
     uint32_t cuid;
     uint32_t num_acquired_nonces;
@@ -159,12 +158,10 @@ static void *
       } else if (keys_found) {
         break;
       } else {
-        if (!thread_arg->silent) {
-          char progress_text[80] = { 0 };
-          sprintf(progress_text, "Brute force phase: %6.02f%%", 100.0 * (float)num_keys_tested / (float)(thread_arg->maximum_states));
-          float remaining_bruteforce = thread_arg->nonces[thread_arg->best_first_bytes[0]].expected_num_brute_force - (float)num_keys_tested / 2;
-          hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, remaining_bruteforce, thread_arg->trgBlock, thread_arg->trgKey, true);
-        }
+        char progress_text[80] = { 0 };
+        sprintf(progress_text, "Brute force phase: %6.02f%%", 100.0 * (float)num_keys_tested / (float)(thread_arg->maximum_states));
+        float remaining_bruteforce = thread_arg->nonces[thread_arg->best_first_bytes[0]].expected_num_brute_force - (float)num_keys_tested / 2;
+        hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, remaining_bruteforce, thread_arg->trgBlock, thread_arg->trgKey, true);
       }
     }
     current_bucket += num_CPUs();
@@ -230,9 +227,8 @@ void prepare_bf_test_nonces(noncelist_t *nonces, uint8_t best_first_byte)
   }
 }
 
-bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint32_t num_acquired_nonces, uint64_t maximum_states, noncelist_t *nonces, uint8_t *best_first_bytes, uint8_t trgBlock, uint8_t trgKey)
+bool brute_force_bs(statelist_t *candidates, uint32_t cuid, uint32_t num_acquired_nonces, uint64_t maximum_states, noncelist_t *nonces, uint8_t *best_first_bytes, uint8_t trgBlock, uint8_t trgKey)
 {
-  bool silent = (bf_rate != NULL);
   keys_found = 0;
   num_keys_tested = 0;
 
@@ -249,10 +245,8 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
 
   uint8_t num_core = num_CPUs();
   pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t) * num_core);
-  uint64_t start_time = msclock();
 
   struct args {
-    bool silent;
     int thread_ID;
     uint32_t cuid;
     uint32_t num_acquired_nonces;
@@ -265,7 +259,6 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
 
   for (uint8_t i = 0; i < num_core; i++) {
     thread_args[i].thread_ID = i;
-    thread_args[i].silent = silent;
     thread_args[i].cuid = cuid;
     thread_args[i].num_acquired_nonces = num_acquired_nonces;
     thread_args[i].maximum_states = maximum_states;
@@ -280,90 +273,6 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
   }
   free(thread_args);
   free(threads);
-  uint64_t elapsed_time = msclock() - start_time;
-
-  if (bf_rate != NULL) {
-    *bf_rate = (float)num_keys_tested / ((float)elapsed_time / 1000.0);
-  }
 
   return (keys_found != 0);
-}
-
-static void _read(void *buf, size_t size, size_t count, uint8_t *stream, size_t *pos)
-{
-  size_t len = size * count;
-  memcpy(buf, &stream[*pos], len);
-  *pos += len;
-}
-
-static bool read_bench_data(statelist_t *test_candidates)
-{
-  uint8_t *bench_data = bf_bench_data_bin;
-  size_t pos = 0;
-
-  uint32_t temp = 0;
-  uint32_t num_states = 0;
-  uint32_t states_read = 0;
-
-  _read(&nonces_to_bruteforce, 1, sizeof(nonces_to_bruteforce), bench_data, &pos);
-  for (uint16_t i = 0; i < nonces_to_bruteforce && i < 256; i++) {
-    _read(&bf_test_nonce[i], 1, sizeof(uint32_t), bench_data, &pos);
-    bf_test_nonce_2nd_byte[i] = (bf_test_nonce[i] >> 16) & 0xff;
-    _read(&bf_test_nonce_par[i], 1, sizeof(uint8_t), bench_data, &pos);
-  }
-  _read(&num_states, 1, sizeof(uint32_t), bench_data, &pos);
-  for (states_read = 0; states_read < MIN(num_states, TEST_BENCH_SIZE); states_read++) {
-    _read(test_candidates->states[EVEN_STATE] + states_read, 1, sizeof(uint32_t), bench_data, &pos);
-  }
-  for (uint32_t i = states_read; i < TEST_BENCH_SIZE; i++) {
-    test_candidates->states[EVEN_STATE][i] = test_candidates->states[EVEN_STATE][i - states_read];
-  }
-  for (uint32_t i = states_read; i < num_states; i++) {
-    _read(&temp, 1, sizeof(uint32_t), bench_data, &pos);
-  }
-  for (states_read = 0; states_read < MIN(num_states, TEST_BENCH_SIZE); states_read++) {
-    _read(test_candidates->states[ODD_STATE] + states_read, 1, sizeof(uint32_t), bench_data, &pos);
-  }
-  for (uint32_t i = states_read; i < TEST_BENCH_SIZE; i++) {
-    test_candidates->states[ODD_STATE][i] = test_candidates->states[ODD_STATE][i - states_read];
-  }
-
-  return true;
-}
-
-float brute_force_benchmark()
-{
-  uint8_t num_core = num_CPUs();
-  statelist_t *test_candidates = malloc(num_core * sizeof(*test_candidates));
-
-  test_candidates[0].states[ODD_STATE] = malloc((TEST_BENCH_SIZE + 1) * sizeof(uint32_t));
-  test_candidates[0].states[EVEN_STATE] = malloc((TEST_BENCH_SIZE + 1) * sizeof(uint32_t));
-  for (uint8_t i = 0; i < num_core - 1; i++) {
-    test_candidates[i].next = test_candidates + i + 1;
-    test_candidates[i + 1].states[ODD_STATE] = test_candidates[0].states[ODD_STATE];
-    test_candidates[i + 1].states[EVEN_STATE] = test_candidates[0].states[EVEN_STATE];
-  }
-  test_candidates[num_core - 1].next = NULL;
-
-  if (!read_bench_data(test_candidates)) {
-    printf("Couldn't read benchmark data. Assuming brute force rate of %1.0f states per second", DEFAULT_BRUTE_FORCE_RATE);
-    return DEFAULT_BRUTE_FORCE_RATE;
-  }
-
-  for (uint8_t i = 0; i < num_core; i++) {
-    test_candidates[i].len[ODD_STATE] = TEST_BENCH_SIZE;
-    test_candidates[i].len[EVEN_STATE] = TEST_BENCH_SIZE;
-    test_candidates[i].states[ODD_STATE][TEST_BENCH_SIZE] = -1;
-    test_candidates[i].states[EVEN_STATE][TEST_BENCH_SIZE] = -1;
-  }
-
-  uint64_t maximum_states = TEST_BENCH_SIZE * TEST_BENCH_SIZE * (uint64_t)num_core;
-
-  float bf_rate;
-  brute_force_bs(&bf_rate, test_candidates, 0, 0, maximum_states, NULL, 0, 0, 0);
-
-  free(test_candidates[0].states[ODD_STATE]);
-  free(test_candidates[0].states[EVEN_STATE]);
-  free(test_candidates);
-  return bf_rate;
 }

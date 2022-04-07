@@ -56,7 +56,6 @@
 static uint16_t sums[NUM_SUMS] = { 0, 32, 56, 64, 80, 96, 104, 112, 120, 128, 136, 144, 152, 160, 176, 192, 200, 224, 256 }; // possible sum property values
 
 static uint32_t num_acquired_nonces = 0;
-static uint64_t start_time = 0;
 static uint16_t effective_bitflip[2][0x400];
 static uint16_t num_effective_bitflips[2] = { 0, 0 };
 static uint16_t all_effective_bitflip[0x400];
@@ -65,7 +64,6 @@ static uint16_t num_1st_byte_effective_bitflips = 0;
 static uint8_t hardnested_stage = CHECK_1ST_BYTES;
 static uint64_t known_target_key;
 static uint32_t test_state[2] = { 0, 0 };
-static float brute_force_per_second;
 static pthread_mutex_t statelist_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t book_of_work_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint16_t real_sum_a8 = 0;
@@ -1804,7 +1802,7 @@ static bool brute_force(uint8_t trgBlock, uint8_t trgKey)
   if (known_target_key != -1) {
     TestIfKeyExists(known_target_key);
   }
-  return brute_force_bs(NULL, candidates, cuid, num_acquired_nonces, maximum_states, nonces, best_first_bytes, trgBlock, trgKey);
+  return brute_force_bs(candidates, cuid, num_acquired_nonces, maximum_states, nonces, best_first_bytes, trgBlock, trgKey);
 }
 
 static uint16_t SumProperty(struct Crypto1State *s)
@@ -1888,11 +1886,8 @@ bool mfnestedhard(uint8_t src_sector, uint8_t src_key_type, uint8_t *key, uint8_
   cuid = t.authuid;
 
   srand((unsigned)time(NULL));
-  brute_force_per_second = brute_force_benchmark();
   write_stats = false;
-  start_time = msclock();
   print_progress_header();
-  // sprintf(progress_text, "Brute force benchmark: %1.0f million (2^%1.1f) keys/s", brute_force_per_second / 1000000, log(brute_force_per_second) / log(2.0));
   // hardnested_print_progress(0, progress_text, (float) (1LL << 47), 0, targetSECTOR, targetKEY, true);
   if (!init_bitflip_bitarrays())
     return false;
