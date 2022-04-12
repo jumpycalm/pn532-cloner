@@ -104,7 +104,6 @@ static char file_name[MAX_FILE_LEN];
 
 static const uint8_t default_key[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static const uint8_t blank_key[6] = { 0 };
-static const uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
 static const uint8_t default_data_block[16] = { 0 };
 static const uint8_t default_trailer_block[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
@@ -257,7 +256,7 @@ static uint32_t get_trailer_block(uint32_t uiFirstBlock)
 */
 
 // Calculate if we reached the 1st block that needs authentication
-static bool if_need_authenticate(uint16_t current_block)
+static bool if_need_authenticate(uint16_t current_block, bool write_block_zero)
 {
   int i; // i must be a signed number because we are doing minus, it's possible i will reach to -1 to compare with 0
   if (is_trailer_block(current_block)) {
@@ -269,10 +268,10 @@ static bool if_need_authenticate(uint16_t current_block)
   }
 
   // If the leading block is not default, we need to authenticate this block
-  if (get_leading_block_num_from_block_num(current_block) == current_block)
+  if (get_leading_block_num_from_block_num(current_block, write_block_zero) == current_block)
     return true;
   // If the current block is not the leading block, we need to check if there's any block before this block is not default
-  for (i = current_block - 1; i >= get_leading_block_num_from_block_num(current_block); i--) {
+  for (i = current_block - 1; i >= get_leading_block_num_from_block_num(current_block, write_block_zero); i--) {
     if (memcmp(&mtDump.amb[i], default_data_block, 16))
       return false;
   }
@@ -309,9 +308,7 @@ bool write_blank_mfc(bool write_block_zero)
   } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
     total_blocks = NR_BLOCKS_4k + 1;
 
-  // Sanitize the buffer in case the buffer is not sanitized
-  // Failure to do so may brick the tag if loading a dump file not from this application
-  sanitize_mfc_buffer();
+  sanitize_mfc_buffer_for_gen2_magic();
 
   if (!mf_configure(r.pdi))
     return false;
@@ -324,7 +321,7 @@ bool write_blank_mfc(bool write_block_zero)
   // Completely write the card, but skipping block 0 if we don't need to write on it
   for (; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach new block and need to actually write a data on
-    if (if_need_authenticate(current_block)) {
+    if (if_need_authenticate(current_block, write_block_zero)) {
       // printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
@@ -350,8 +347,9 @@ bool write_blank_mfc(bool write_block_zero)
 
 // Changing Block 0 or configuration block may brick some tags
 // This function will set Block 0 to all 0s and set all the configuration blocks with the default access bits
-void sanitize_mfc_buffer(void)
+void sanitize_mfc_buffer_for_gen2_magic(void)
 {
+  uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
   memset(&mtDump, 0, sizeof(mifare_classic_block));
   for (uint16_t i = 3; i < NR_BLOCKS_4k; i += 4) {
     if (is_trailer_block(i)) {
@@ -618,17 +616,9 @@ read_tag:
     printf("All keys found! Reading the tag, please wait up to 6s.\n");
 
   i = t.num_sectors; // Sector counter
-  // Read all blocks (no need to read Block 0)
-  for (block = t.num_blocks; block > 0; block--) {
+  // Read all blocks
+  for (block = t.num_blocks; block >= 0; block--) {
     is_trailer_block(block) ? i-- : i;
-
-    // No need to read trailer block
-    if (is_trailer_block(block)) {
-      memcpy(mtDump.amb[block].mbt.abtKeyA, t.sectors[i].KeyA, 6);
-      memcpy(mtDump.amb[block].mbt.abtKeyB, t.sectors[i].KeyB, 6);
-      memcpy(mtDump.amb[block].mbt.abtAccessBits, default_acl, sizeof(default_acl)); // Never use the source tag's access bit to avoid breaking tags
-      continue;
-    }
 
     // Three possibility of mfoc_nfc_initiator_mifare_cmd return code:
     // 0 success
@@ -669,6 +659,15 @@ read_tag:
     }
 
     memcpy(mtDump.amb[block].mbd.abtData, mp.mpd.abtData, 16);
+    if (is_trailer_block(block)) {
+      memcpy(mtDump.amb[block].mbt.abtKeyA, t.sectors[i].KeyA, 6);
+      memcpy(mtDump.amb[block].mbt.abtKeyB, t.sectors[i].KeyB, 6);
+    }
+    // The last 2 bytes in Block 0 is used as a marker bytes for the target tag
+    if (!block) {
+      mtDump.amb[block].mbd.abtData[14] = 0;
+      mtDump.amb[block].mbd.abtData[15] = 0;
+    }
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
   }
 
@@ -688,9 +687,6 @@ read_tag:
       last_read_mfc_type = MFC_TYPE_C47;
   }
   memcpy(last_read_uid, t.nt.nti.nai.abtUid, 7);
-
-  // Make sure to sanitize the buffer before logging it into a file
-  sanitize_mfc_buffer();
 
   if (!(pfDump = fopen(file_name, "wb"))) {
     fprintf(stderr, "Saving log file failed\n");
@@ -860,7 +856,11 @@ bool write_mfc(bool force, char *file_name)
     // Gen3 magic use special command to write Block 0
     memset(abtCmd, 0, sizeof(abtCmd));
     memcpy(abtCmd, "\x90\xf0\xcc\xcc\x10", 5);
-    memcpy(abtCmd + 5, last_read_uid, 7);
+    memcpy(abtCmd + 5, mtDump.amb[0].mbd.abtData, 14);
+    if (last_read_mfc_type == MFC_TYPE_C17 || last_read_mfc_type == MFC_TYPE_C47)
+      memcpy(abtCmd + 5, last_read_uid, 7);
+    else
+      memcpy(abtCmd + 5, last_read_uid, 4);
     memcpy(abtCmd + 5 + 14, "\xe1\xe2", 2);
 
     if (!mf_configure(r.pdi))

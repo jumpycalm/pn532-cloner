@@ -258,8 +258,11 @@ uint8_t get_sector_num_from_block_num(uint8_t block)
   return 32 + (block >> 4);
 }
 
-uint16_t get_leading_block_num_from_block_num(uint16_t block)
+uint16_t get_leading_block_num_from_block_num(uint16_t block, bool write_block_zero)
 {
+  // If we are not writing Block 0, then Block 1 is the leading block
+  if (!write_block_zero && block == 1)
+    return true;
   // Test if we are in the small or big sectors
   if (block < 128)
     return block / 4 * 4;

@@ -292,6 +292,6 @@ typedef union {
 uint8_t get_leading_block_num_from_sector_num(uint8_t sector);
 uint8_t get_trailer_block_num_from_sector_num(uint8_t sector_num);
 uint8_t get_sector_num_from_block_num(uint8_t block);
-uint16_t get_leading_block_num_from_block_num(uint16_t block);
+uint16_t get_leading_block_num_from_block_num(uint16_t block, bool write_block_zero);
 
 #endif // _LIBNFC_MIFARE_H_

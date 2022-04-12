@@ -1174,7 +1174,7 @@ static void *acquire_enc_nonces(void *arguments)
     }
 
     // Make sure we don't overflow the array holding the nonces
-    if (new_nonce_num >= MAX_ENC_NONCE_BUFFER) {
+    if (new_nonce_num >= MAX_ENC_NONCE_BUFFER - 1) {
       printf("\nToo many nonces need to be collected, something is wrong\n");
       acquire_nonce_status = false;
       crypto1_destroy(pcs);
