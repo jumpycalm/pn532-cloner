@@ -1069,9 +1069,7 @@ static void *acquire_enc_nonces(void *arguments)
       pthread_exit(NULL);
     }
 
-    if ((res = nfc_initiator_transceive_bytes(
-             r.pdi, Auth, 4, Rx, sizeof(Rx), 0))
-        < 0) {
+    if ((res = nfc_initiator_transceive_bytes(r.pdi, Auth, 4, Rx, sizeof(Rx), 0)) < 0) {
       printf("\nError while requesting plain tag-nonce, %d\n", res);
       acquire_nonce_status = false;
       pthread_exit(NULL);
