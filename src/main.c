@@ -145,7 +145,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
           return -1;
         }
-        if (!mf_anticollision(t, r))
+        if (!mf_select_tag(t, r))
           return -1;
       } else {
         // Save all information about successfull keyA authentization
@@ -162,7 +162,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
           return -1;
         }
-        if (!mf_anticollision(t, r))
+        if (!mf_select_tag(t, r))
           return -1;
       } else {
         memcpy(t.sectors[i].KeyB, mp->mpa.abtKey, sizeof(mp->mpa.abtKey));
@@ -180,7 +180,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
           return -1;
         }
-        if (!mf_anticollision(t, r))
+        if (!mf_select_tag(t, r))
           return -1;
       } else {
         if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, current_block, &mp_tmp)) >= 0) {
@@ -191,7 +191,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
           if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, mp)) < 0) {
             if (!mf_configure(r.pdi))
               return -1;
-            if (!mf_anticollision(t, r))
+            if (!mf_select_tag(t, r))
               return -1;
           } else {
             memcpy(t.sectors[i].KeyB, mp_tmp.mpd.abtData + 10, sizeof(t.sectors[i].KeyB));
@@ -203,7 +203,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
             nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
             return -1;
           }
-          if (!mf_anticollision(t, r))
+          if (!mf_select_tag(t, r))
             return -1;
         }
       }
@@ -566,7 +566,7 @@ bool read_mfc()
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       if (!mf_configure(r.pdi))
         goto out;
-      if (!mf_anticollision(t, r))
+      if (!mf_select_tag(t, r))
         goto out;
       test_key_res = test_keys(&mp, false);
       if (test_key_res < 0)
@@ -589,7 +589,7 @@ bool read_mfc()
       memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
       if (!mf_configure(r.pdi))
         goto out;
-      if (!mf_anticollision(t, r))
+      if (!mf_select_tag(t, r))
         goto out;
       test_key_res = test_keys(&mp, false);
       if (test_key_res < 0)
@@ -1078,21 +1078,10 @@ bool mf_configure(nfc_device *pdi)
   return true;
 }
 
-bool mf_select_tag(nfc_device *pdi, nfc_target *pnt)
-{
-  if (nfc_initiator_select_passive_target(pdi, nm, NULL, 0, pnt) < 0) {
-    ERR("Unable to connect to the MIFARE Classic tag");
-    nfc_close(pdi);
-    nfc_exit(context);
-    return false;
-  }
-  return true;
-}
-
-bool mf_anticollision(mftag t, mfreader r)
+bool mf_select_tag(mftag t, mfreader r)
 {
   if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) < 0) {
-    printf("Tag has been removed.\n");
+    printf("Unable to select the tag. Possible the tag has been removed.\n");
     return false;
   }
   return true;

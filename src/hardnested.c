@@ -1017,7 +1017,7 @@ static uint8_t nonce_trg_key_type;
 static void *acquire_enc_nonces(void *arguments)
 {
   uint8_t Nr[4] = { 0 }; // Reader nonce
-  uint8_t Auth[4] = { 0 };
+  uint8_t Cmd[9] = { 0 };
   uint8_t AuthEnc[4] = { 0 };
 
   uint8_t AuthEncPar[8] = { 0 };
@@ -1034,53 +1034,51 @@ static void *acquire_enc_nonces(void *arguments)
   uint32_t i;
   uint8_t p;
 
+  if (!mf_configure(r.pdi)) {
+    acquire_nonce_status = false;
+    pthread_exit(NULL);
+  }
+
+  if (nfc_initiator_init(r.pdi) < 0) {
+    printf("\nFailed to setup the reader.\n");
+    acquire_nonce_status = false;
+    pthread_exit(NULL);
+  }
+
+  if (!mf_select_tag(t, r)) {
+    acquire_nonce_status = false;
+    pthread_exit(NULL);
+  }
+
+  // Put the reader into the raw data mode
+  if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
+    printf("\nFailed to put the reader into the raw data mode.\n");
+    acquire_nonce_status = false;
+    pthread_exit(NULL);
+  }
+
+  // We need to control the CRC from the software side
+  if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, false) < 0) {
+    printf("\nFailed to set reader's CRC mode\n");
+    acquire_nonce_status = false;
+    pthread_exit(NULL);
+  }
   while (continue_acquire_nonces) {
     struct Crypto1State *pcs;
-    if (!mf_configure(r.pdi)) {
-      acquire_nonce_status = false;
-      pthread_exit(NULL);
-    }
-
-    if (!mf_anticollision(t, r)) {
-      acquire_nonce_status = false;
-      pthread_exit(NULL);
-    }
 
     // Prepare AUTH command
-    Auth[0] = nonce_src_key_type;
-    Auth[1] = get_leading_block_num_from_sector_num(nonce_src_sector); // block
+    Cmd[0] = nonce_src_key_type;
+    Cmd[1] = get_leading_block_num_from_sector_num(nonce_src_sector); // block
 
-    iso14443a_crc_append(Auth, 2);
-    // fprintf(stdout, "\nMode: %c, Auth command:\t", mode);
-    // print_hex(Auth, 4);
+    iso14443a_crc_append(Cmd, 2);
+    // fprintf(stdout, "\nMode: %c, Cmd command:\t", mode);
+    // print_hex(Cmd, 4);
 
-    // We need full control over the CRC
-    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, false) < 0) {
-      printf("\nnfc_device_set_property_bool crc\n");
-      acquire_nonce_status = false;
-      pthread_exit(NULL);
-    }
-
-    // Request plain tag-nonce
-    // TODO: Set NP_EASY_FRAMING option only once if possible
-    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
-      printf("\nnfc_device_set_property_bool framing\n");
-      acquire_nonce_status = false;
-      pthread_exit(NULL);
-    }
-
-    if ((res = nfc_initiator_transceive_bytes(r.pdi, Auth, 4, Rx, sizeof(Rx), 0)) < 0) {
+    if ((res = nfc_initiator_transceive_bytes(r.pdi, Cmd, 4, Rx, sizeof(Rx), 0)) < 0) {
       printf("\nError while requesting plain tag-nonce, %d\n", res);
       acquire_nonce_status = false;
       pthread_exit(NULL);
     }
-
-    if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, true) < 0) {
-      printf("\nnfc_device_set_property_bool\n");
-      acquire_nonce_status = false;
-      pthread_exit(NULL);
-    }
-    // print_hex(Rx, res);
 
     // Save the tag nonce (Nt)
     Nt = bytes_to_num(Rx, res);
@@ -1108,7 +1106,7 @@ static void *acquire_enc_nonces(void *arguments)
       ArEncPar[i] = filter(pcs->odd) ^ oddparity(Nt);
     }
 
-    // Finally we want to send arbitrary parity bits
+    // MIFARE Classic does not use standard parity during the encrypted communication
     if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, false) < 0) {
       printf("\nnfc_device_set_property_bool parity\n");
       acquire_nonce_status = false;
@@ -1140,17 +1138,17 @@ static void *acquire_enc_nonces(void *arguments)
     }
     // fprintf(stdout, "Authentication completed.\n\n");
 
-    // Again, prepare the Auth command with MC_AUTH_A, recover the block and
+    // Again, prepare the Cmd command with MC_AUTH_A, recover the block and
     // CRC
-    Auth[0] = nonce_trg_key_type;
-    Auth[1] = get_leading_block_num_from_sector_num(nonce_trg_sector); // block
-    iso14443a_crc_append(Auth, 2);
+    Cmd[0] = nonce_trg_key_type;
+    Cmd[1] = get_leading_block_num_from_sector_num(nonce_trg_sector); // block
+    iso14443a_crc_append(Cmd, 2);
 
-    // Encryption of the Auth command, sending the Auth command
+    // Encryption of the Cmd command, sending the Cmd command
     for (i = 0; i < 4; i++) {
-      AuthEnc[i] = crypto1_byte(pcs, 0, 0) ^ Auth[i];
+      AuthEnc[i] = crypto1_byte(pcs, 0, 0) ^ Cmd[i];
       // Encrypt the parity bits with the 4 plaintext bytes
-      AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Auth[i]);
+      AuthEncPar[i] = filter(pcs->odd) ^ oddparity(Cmd[i]);
     }
     if (((res = nfc_initiator_transceive_bits(r.pdi, AuthEnc, 32, AuthEncPar, Rx, sizeof(Rx), RxPar)) < 0) || (res != 32)) {
       printf("\nError while requesting encrypted tag-nonce\n");
@@ -1171,6 +1169,72 @@ static void *acquire_enc_nonces(void *arguments)
       par_bit[new_nonce_num] |= p;
     }
 
+    // We now have an encrypted nonce, try to halt the tag, then wake up the tag to select the tag again
+
+    // Use standard ISO 14443A protocol, so need to send the correct parity bits
+    if (nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true) < 0) {
+      printf("\nnfc_device_set_property_bool parity\n");
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      pthread_exit(NULL);
+    }
+
+    // Halt (0x50, 0x00)
+    Cmd[0] = 0x50;
+    Cmd[1] = 0x00;
+    // Tags do not respond to hald command, so we don't care the return value
+    nfc_initiator_transceive_bytes(r.pdi, Cmd, 2, Rx, sizeof(Rx), -1);
+
+    // Wake-up or WUPA (0x52, 7-bit)
+    Cmd[0] = 0x52;
+    if ((res = nfc_initiator_transceive_bits(r.pdi, Cmd, 7, NULL, Rx, sizeof(Rx), NULL)) != 16) {
+      printf("\nError waking up the tag, %d\n", res);
+      acquire_nonce_status = false;
+      crypto1_destroy(pcs);
+      pthread_exit(NULL);
+    }
+
+    // Select UID (4-byte UID and 7-byte UID are different)
+    if (t.nt.nti.nai.szUidLen == 4) {
+      // Select CL1 (0x93, 0x70)
+      Cmd[0] = 0x93;
+      Cmd[1] = 0x70;
+      memcpy(Cmd + 2, t.nt.nti.nai.abtUid, 4);
+      Cmd[6] = Cmd[2] ^ Cmd[3] ^ Cmd[4] ^ Cmd[5]; // calculate and add BCC
+      iso14443a_crc_append(Cmd, 7);
+      if ((res = nfc_initiator_transceive_bytes(r.pdi, Cmd, 9, Rx, sizeof(Rx), 0)) != 3) {
+        printf("\nError while reslecting UID CL1, %d\n", res);
+        acquire_nonce_status = false;
+        crypto1_destroy(pcs);
+        pthread_exit(NULL);
+      }
+    } else {
+      // Select CL1 (0x93, 0x70)
+      Cmd[0] = 0x93;
+      Cmd[1] = 0x70;
+      Cmd[2] = 0x88;
+      memcpy(Cmd + 3, t.nt.nti.nai.abtUid, 3);
+      Cmd[6] = Cmd[2] ^ Cmd[3] ^ Cmd[4] ^ Cmd[5]; // calculate and add BCC
+      iso14443a_crc_append(Cmd, 7);
+      if ((res = nfc_initiator_transceive_bytes(r.pdi, Cmd, 9, Rx, sizeof(Rx), 0)) != 3) {
+        printf("\nError while reslecting UID CL1, %d\n", res);
+        acquire_nonce_status = false;
+        crypto1_destroy(pcs);
+        pthread_exit(NULL);
+      }
+      // Select CL2 (0x95, 0x70)
+      Cmd[0] = 0x95;
+      Cmd[1] = 0x70;
+      memcpy(Cmd + 2, t.nt.nti.nai.abtUid + 3, 4);
+      Cmd[6] = Cmd[2] ^ Cmd[3] ^ Cmd[4] ^ Cmd[5]; // calculate and add BCC
+      iso14443a_crc_append(Cmd, 7);
+      if ((res = nfc_initiator_transceive_bytes(r.pdi, Cmd, 9, Rx, sizeof(Rx), 0)) != 3) {
+        printf("\nError while reslecting UID CL2, %d\n", res);
+        acquire_nonce_status = false;
+        crypto1_destroy(pcs);
+        pthread_exit(NULL);
+      }
+    }
     // Make sure we don't overflow the array holding the nonces
     if (new_nonce_num >= MAX_ENC_NONCE_BUFFER - 1) {
       printf("\nToo many nonces need to be collected, something is wrong\n");
