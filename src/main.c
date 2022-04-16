@@ -81,13 +81,6 @@ static const nfc_modulation nm = {
 
 nfc_context *context;
 
-uint64_t knownKey = 0;
-char knownKeyLetter = 'A';
-uint32_t knownSector = 0;
-uint32_t unknownSector = 0;
-char unknownKeyLetter = 'A';
-uint32_t unexpected_random = 0;
-
 // mtDump saves the memory dump of last read MFC tag
 // last_read_type saves the last success read MFC tag
 typedef enum {
@@ -402,6 +395,9 @@ bool read_mfc()
 
   last_read_mfc_type = MFC_TYPE_INVALID; // Always assume read is failed before performing the read
 
+  // Initialize t.sectors, keys are not known yet
+  memset(&t, 0, sizeof(t));
+
   if (!mf_configure(r.pdi))
     return false;
 
@@ -464,17 +460,6 @@ bool read_mfc()
   default:
     ERR("Cannot determine card type from SAK");
     return false;
-  }
-
-  t.sectors = (void *)calloc(t.num_sectors, sizeof(sector));
-  if (t.sectors == NULL) {
-    ERR("Cannot allocate memory for t.sectors");
-    return false;
-  }
-
-  // Initialize t.sectors, keys are not known yet
-  for (uint8_t s = 0; s < (t.num_sectors); ++s) {
-    t.sectors[s].foundKeyA = t.sectors[s].foundKeyB = false;
   }
 
   // Check if the tag is a blank tag by checking the UID
@@ -706,8 +691,6 @@ read_tag:
   }
 
 out:
-  free(t.sectors);
-
   // Reset the "advanced" configuration to normal
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_CRC, true);
   nfc_device_set_property_bool(r.pdi, NP_HANDLE_PARITY, true);
@@ -930,6 +913,9 @@ bool clean_mfc(bool force)
   if (!mf_configure(r.pdi))
     return false;
 
+  // Initialize t.sectors, keys are not known yet
+  memset(&t, 0, sizeof(t));
+
   if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
     nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
     return false;
@@ -1000,14 +986,6 @@ bool clean_mfc(bool force)
     t.authuid = (uint32_t)bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
     t.num_sectors = NR_TRAILERS_1k;
     t.num_blocks = NR_BLOCKS_1k;
-    t.sectors = (void *)calloc(t.num_sectors, sizeof(sector));
-    if (t.sectors == NULL) {
-      ERR("Cannot allocate memory for t.sectors");
-      return false;
-    }
-    // Initialize t.sectors, keys are not known yet
-    for (i = 0; i < (t.num_sectors); i++)
-      t.sectors[i].foundKeyA = t.sectors[i].foundKeyB = false;
 
     // Try to check keys for sector 0 in order to read Block 0
     static mifare_param mp;
@@ -1021,7 +999,6 @@ bool clean_mfc(bool force)
 
     if (!t.sectors[0].foundKeyA) {
       printf("Unsupported tag!\n");
-      free(t.sectors);
       return false;
     }
 
@@ -1029,13 +1006,11 @@ bool clean_mfc(bool force)
     memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
     if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
       printf("Failed to authenticate Block 0!\n");
-      free(t.sectors);
       return false;
     }
 
     if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 0, &mp)) {
       printf("Failed to read Block 0!\n");
-      free(t.sectors);
       return false;
     }
 
@@ -1046,7 +1021,6 @@ bool clean_mfc(bool force)
     if (!force) {
       if (block_0[14] != 0xe1 || block_0[15] != 0xe2) {
         printf("Unsupported tag!\n");
-        free(t.sectors);
         return false;
       }
     }
@@ -1058,14 +1032,12 @@ bool clean_mfc(bool force)
     memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
     if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
       printf("Authentication error\n");
-      free(t.sectors);
       return false;
     }
 
     memcpy(mp.mpd.abtData, block_0, 16);
     if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 0, &mp)) {
       printf("Tag not supported\n");
-      free(t.sectors);
       return false;
     }
 
@@ -1077,16 +1049,13 @@ bool clean_mfc(bool force)
           goto crack_key;
       }
       printf("Blank tag detected.\n");
-      free(t.sectors);
       return true;
     }
 
   crack_key:
     // TODO: Will do this in the next phase, crack all the keys, dump the content then wipe the tag
-    free(t.sectors);
     return false;
 
-    free(t.sectors);
     return true;
   }
 }
@@ -1233,38 +1202,6 @@ bool get_rats_is_2k(mftag t, mfreader r)
     // printf("ATS len = %d\n", res);
     return false;
   }
-}
-
-// Return the median value from the nonce distances array
-uint32_t median(denonce d)
-{
-  int middle = (int)d.num_distances / 2;
-  qsort(d.distances, d.num_distances, sizeof(uint32_t), compar_int);
-
-  if (d.num_distances % 2 == 1) {
-    // Odd number of elements
-    return d.distances[middle];
-  } else {
-    // Even number of elements, return the smaller value
-    return (uint32_t)(d.distances[middle - 1]);
-  }
-}
-
-int compar_int(const void *a, const void *b)
-{
-  return (*(uint64_t *)b - *(uint64_t *)a);
-}
-
-// Compare countKeys structure
-int compar_special_int(const void *a, const void *b)
-{
-  return (((countKeys *)b)->count - ((countKeys *)a)->count);
-}
-
-// Return 1 if the nonce is invalid else return 0
-int valid_nonce(uint32_t Nt, uint32_t NtEnc, uint32_t Ks1, uint8_t *parity)
-{
-  return ((odd_parity((Nt >> 24) & 0xFF) == ((parity[0]) ^ odd_parity((NtEnc >> 24) & 0xFF) ^ BIT(Ks1, 16))) & (odd_parity((Nt >> 16) & 0xFF) == ((parity[1]) ^ odd_parity((NtEnc >> 16) & 0xFF) ^ BIT(Ks1, 8))) & (odd_parity((Nt >> 8) & 0xFF) == ((parity[2]) ^ odd_parity((NtEnc >> 8) & 0xFF) ^ BIT(Ks1, 0)))) ? 1 : 0;
 }
 
 void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest)
