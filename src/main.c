@@ -129,7 +129,7 @@ static void pn532_cloner_usage()
 // Test if the given key is valid, if the key is valid, add the key to the found key in global variable
 // Return number of new exploited keys
 // Return -1 if error is detected such as tag is removed
-int8_t test_keys(mifare_param *mp, bool test_block_0_only)
+int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
 {
   int8_t num_of_exploited_keys = 0;
   uint8_t current_block;
@@ -157,7 +157,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
       }
     }
     // Logic for testing Key B
-    if (!t.sectors[i].foundKeyB) {
+    if (!t.sectors[i].foundKeyB && !test_key_a_only) {
       if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, mp)) < 0) {
         if (res != NFC_EMFCAUTHFAIL) {
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
@@ -174,8 +174,8 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only)
     // Logic for trying to get Key B by reading the trailer block
     // Because for comercial application, this backdoor is sealed, the success rate is very low
     // Only perform this task if found Key A but not Key B
-    // All the tags wrote by this application keep this back door open
-    if (just_found_key_a && !t.sectors[i].foundKeyB) {
+    // All the gen 2 tags wrote by this application keep this back door open
+    if (just_found_key_a && !t.sectors[i].foundKeyB && !test_key_a_only) {
       if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, mp)) < 0) {
         if (res != NFC_EMFCAUTHFAIL) {
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
@@ -292,25 +292,24 @@ static bool if_need_write_current_block(uint16_t current_block)
   return true;
 }
 
-// Write to a MFC tag that has been initialized to factory default
-bool write_blank_mfc(bool if_gen_2_magic)
+// Write to a gen 2 tag that has been initialized to factory default
+bool write_blank_gen2(void)
 {
-  uint32_t current_block = 0;
+  uint32_t current_block;
   uint32_t total_blocks = NR_BLOCKS_1k + 1;
   mifare_param mp;
-
-  if (!if_gen_2_magic)
-    current_block = 1;
+  uint32_t last_authenticate_block_num = 0;
 
   // Check to see if we have a success read
   if (last_read_mfc_type == MFC_TYPE_INVALID) {
-    printf("Please read your original tag first before write to a new tag\n");
+    printf("Please read your original tag first before write to a new tag.\n");
     return false;
-  } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
-    total_blocks = NR_BLOCKS_4k + 1;
+  } else if (last_read_mfc_type != MFC_TYPE_C14) {
+    printf("Programming error detected.\n");
+    return false;
+  }
 
-  if (if_gen_2_magic)
-    sanitize_mfc_buffer_for_gen2_magic();
+  sanitize_mfc_buffer_for_gen2_magic();
 
   if (!mf_configure(r.pdi))
     return false;
@@ -321,9 +320,69 @@ bool write_blank_mfc(bool if_gen_2_magic)
   }
 
   // Completely write the card, but skipping block 0 if we don't need to write on it
-  for (; current_block < total_blocks; current_block++) {
+  for (current_block = 0; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach new block and need to actually write a data on
-    if (if_need_authenticate(current_block, if_gen_2_magic)) {
+    if (if_need_authenticate(current_block, true)) {
+      // printf("Block %u needs authentication\n", current_block);
+
+      // Check if we need to reslect with the new UID
+      if (current_block > 3 && last_authenticate_block_num < 4) {
+        if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
+          printf("Error: tag was removed\n");
+          return false;
+        }
+      }
+
+      memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+      memcpy(mp.mpa.abtKey, default_key, 6);
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
+        printf("Authentication error\n");
+        return false;
+      }
+
+      last_authenticate_block_num = current_block;
+    }
+
+    // Write data
+    if (if_need_write_current_block(current_block)) {
+      memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
+        printf("Failed at writing block %d \n", current_block);
+        return false;
+      }
+      // printf("Block %u write success.\n", current_block);
+    }
+  }
+
+  return true;
+}
+
+// Write to a gen 3 tag that has been initialized to factory default
+bool write_blank_gen3(void)
+{
+  uint32_t current_block;
+  uint32_t total_blocks = NR_BLOCKS_1k + 1;
+  mifare_param mp;
+
+  // Check to see if we have a success read
+  if (last_read_mfc_type == MFC_TYPE_INVALID) {
+    printf("Please read your original tag first before write to a new tag\n");
+    return false;
+  } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
+    total_blocks = NR_BLOCKS_4k + 1;
+
+  if (!mf_configure(r.pdi))
+    return false;
+
+  if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
+    printf("Error: tag was removed\n");
+    return false;
+  }
+
+  // Completely write the card, but skipping block 0
+  for (current_block = 1; current_block < total_blocks; current_block++) {
+    // Authenticate everytime we reach new block and need to actually write a data on
+    if (if_need_authenticate(current_block, false)) {
       // printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
@@ -352,7 +411,6 @@ bool write_blank_mfc(bool if_gen_2_magic)
 void sanitize_mfc_buffer_for_gen2_magic(void)
 {
   uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
-  memset(&mtDump, 0, sizeof(mifare_classic_block));
   mtDump.amb[0].mbd.abtData[14] = 0xe1;
   mtDump.amb[0].mbd.abtData[15] = 0xe2;
   for (uint8_t i = 0; i < NR_TRAILERS_1k; i++)
@@ -489,7 +547,7 @@ bool read_mfc()
   printf("\nChecking encryption keys, please wait up to 8s\n");
 
   memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
-  test_key_res = test_keys(&mp, false);
+  test_key_res = test_keys(&mp, false, false);
   if (test_key_res < 0)
     goto out;
   else
@@ -499,7 +557,7 @@ bool read_mfc()
   // they will unlikely to be able to work with other blocks as well.
   for (i = 1; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, defaultKeys[i], sizeof(defaultKeys[i]));
-    test_key_res = test_keys(&mp, true);
+    test_key_res = test_keys(&mp, true, false);
     if (test_key_res < 0)
       goto out;
     else
@@ -553,7 +611,7 @@ bool read_mfc()
         goto out;
       if (!mf_select_tag(t, r))
         goto out;
-      test_key_res = test_keys(&mp, false);
+      test_key_res = test_keys(&mp, false, false);
       if (test_key_res < 0)
         goto out;
       if (!test_key_res) {
@@ -576,7 +634,7 @@ bool read_mfc()
         goto out;
       if (!mf_select_tag(t, r))
         goto out;
-      test_key_res = test_keys(&mp, false);
+      test_key_res = test_keys(&mp, false, false);
       if (test_key_res < 0)
         goto out;
       if (!test_key_res) {
@@ -867,7 +925,7 @@ bool write_mfc(bool force, char *file_name)
     Sleep(1000);
     if (res == 2) {
       printf("Start writing to the Magic tag, please wait up to 5s\n");
-      if (!write_blank_mfc(false)) {
+      if (!write_blank_gen3()) {
         printf("Write to a new tag failed\n");
         return false;
       } else {
@@ -890,8 +948,7 @@ bool write_mfc(bool force, char *file_name)
     // The clean function also ensure the tag is a supported magic tag
     if (!clean_mfc(force))
       return false;
-
-    if (!write_blank_mfc(true)) {
+    if (!write_blank_gen2()) {
       printf("Write to a new tag failed\n");
       return false;
     } else {
@@ -970,10 +1027,10 @@ bool clean_mfc(bool force)
     // Failure to do so, will brick the tag
     Sleep(1000);
     if (res == 2) {
-      printf("Clean a MIFARE Classic tag successfully!\n");
+      printf("Clean a Gen 3 MIFARE Classic tag successfully!\n");
       return true;
     } else {
-      printf("Clean a MIFARE Classic tag failed. res = %d\n", res);
+      printf("Clean a Gen 3 MIFARE Classic tag failed. res = %d\n", res);
       return false;
     }
     return true;
@@ -987,6 +1044,10 @@ bool clean_mfc(bool force)
     t.num_sectors = NR_TRAILERS_1k;
     t.num_blocks = NR_BLOCKS_1k;
 
+    int remaining_keys_to_be_found = t.num_sectors;
+    int remaining_keys_to_be_found_before_hardnested;
+    int test_key_res;
+
     // Try to check keys for sector 0 in order to read Block 0
     static mifare_param mp;
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
@@ -994,7 +1055,9 @@ bool clean_mfc(bool force)
       return false;
     for (i = 0; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
       memcpy(mp.mpa.abtKey, defaultKeys[i], 6);
-      test_keys(&mp, true);
+      test_key_res = test_keys(&mp, true, true);
+      if (test_key_res > 0)
+        remaining_keys_to_be_found -= test_key_res;
     }
 
     if (!t.sectors[0].foundKeyA) {
@@ -1053,9 +1116,108 @@ bool clean_mfc(bool force)
     }
 
   crack_key:
-    // TODO: Will do this in the next phase, crack all the keys, dump the content then wipe the tag
-    return false;
+    // Check default key
+    memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
+    if (!mf_select_tag(t, r))
+      return false;
+    memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
+    test_key_res = test_keys(&mp, false, true);
+    if (test_key_res > 0)
+      remaining_keys_to_be_found -= test_key_res;
 
+    if (remaining_keys_to_be_found) {
+      printf("This tag is encrypted with %u encryption keys.\n", remaining_keys_to_be_found);
+      printf("The ETA to crack all the encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
+
+      remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
+
+      // Use hardnested to crack the unknown keys
+      uint8_t hardnested_src_sector;
+      uint8_t hardnested_src_key_type;
+      uint8_t hardnested_src_key[6];
+      i = t.num_sectors - 1;
+      while (true) {
+        if (t.sectors[i].foundKeyA) {
+          hardnested_src_sector = i;
+          hardnested_src_key_type = MC_AUTH_A;
+          memcpy(hardnested_src_key, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
+          break;
+        }
+        i--;
+      }
+
+      for (i = 0; i < t.num_sectors; i++) {
+        if (!t.sectors[i].foundKeyA) {
+          if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A)) {
+            printf("Clean tag failed at hardnested\n");
+            return false;
+          }
+          memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
+          if (!mf_configure(r.pdi))
+            return false;
+          if (!mf_select_tag(t, r))
+            return false;
+          test_key_res = test_keys(&mp, false, true);
+          if (test_key_res < 0)
+            return false;
+          if (!test_key_res) {
+            printf("Hardnested found the wrong key, please report bug!\n");
+            return false;
+          }
+          remaining_keys_to_be_found -= test_key_res;
+          // Print overall status
+          printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
+          if (remaining_keys_to_be_found)
+            printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
+        }
+
+        if (!remaining_keys_to_be_found)
+          break;
+      }
+    }
+
+    // As of here, we have the Key A for all the sectors
+    if (!mf_configure(r.pdi))
+      return false;
+
+    if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
+      printf("Error: tag was removed\n");
+      return false;
+    }
+    for (i = 1; i <= t.num_blocks; i++) {
+      if (i == 1 || is_first_block(i)) {
+        memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+        memcpy(mp.mpa.abtKey, t.sectors[get_sector_num_from_block_num(i)].KeyA, 6);
+        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, i, &mp)) {
+          printf("Authentication error\n");
+          return false;
+        }
+      }
+      if (is_trailer_block(i))
+        memcpy(mp.mpd.abtData, default_trailer_block, sizeof(default_trailer_block));
+      else
+        memcpy(mp.mpd.abtData, default_data_block, sizeof(default_data_block));
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, i, &mp)) {
+        printf("Failed at writing block %d \n", i);
+        return false;
+      }
+    }
+
+    // Write Block 0
+    memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+    memcpy(mp.mpa.abtKey, default_key, sizeof(default_key));
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+      printf("Authentication error\n");
+      return false;
+    }
+    uint8_t blank_gen2_block0[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe1, 0xe2 };
+    memcpy(mp.mpd.abtData, blank_gen2_block0, sizeof(blank_gen2_block0));
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 0, &mp)) {
+      printf("Failed at writing block 0 \n");
+      return false;
+    }
+
+    printf("Clean a Gen 2 MIFARE Classic tag successfully!\n");
     return true;
   }
 }
