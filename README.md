@@ -16,7 +16,7 @@ Only Windows and macOS (under development) are supported. There's no plan to sup
 ## Read
 MIFARE Classic, MIFARE Ultralight (under development), NTAG (under development).
 ## Write
-Gen 3 Magic MIFARE Classic, Gen 2 Magic MIFARE Classic (under development), Magic MIFARE Ultralight (under development).
+Gen 3 Magic MIFARE Classic, Gen 2 Magic MIFARE Classic, Magic MIFARE Ultralight (under development).
 
 # Usage
 ## Reader driver installation
