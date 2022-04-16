@@ -109,7 +109,7 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
 bool is_first_block(uint32_t uiBlock);
 bool is_trailer_block(uint32_t block);
 void sanitize_mfc_buffer_for_gen2_magic(void);
-bool write_blank_mfc(bool write_block_zero);
+bool write_blank_mfc(bool if_gen_2_magic);
 bool clean_mfc(bool force);
 bool write_mfc(bool force, char *file_name);
 bool read_mfc();

@@ -107,6 +107,14 @@ static const uint8_t blank_key[6] = { 0 };
 static const uint8_t default_data_block[16] = { 0 };
 static const uint8_t default_trailer_block[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
+// Array with default Mifare Classic keys
+static uint8_t defaultKeys[][6] = {
+  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, // Default key (first key used by program if no user defined key)
+  { 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5 }, // NFCForum MAD key
+  { 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5 },
+  { 0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7 }, // NFCForum content key
+};
+
 static void pn532_cloner_usage()
 {
   printf("\n\n\n");
@@ -292,13 +300,13 @@ static bool if_need_write_current_block(uint16_t current_block)
 }
 
 // Write to a MFC tag that has been initialized to factory default
-bool write_blank_mfc(bool write_block_zero)
+bool write_blank_mfc(bool if_gen_2_magic)
 {
   uint32_t current_block = 0;
   uint32_t total_blocks = NR_BLOCKS_1k + 1;
   mifare_param mp;
 
-  if (!write_block_zero)
+  if (!if_gen_2_magic)
     current_block = 1;
 
   // Check to see if we have a success read
@@ -308,7 +316,8 @@ bool write_blank_mfc(bool write_block_zero)
   } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47)
     total_blocks = NR_BLOCKS_4k + 1;
 
-  sanitize_mfc_buffer_for_gen2_magic();
+  if (if_gen_2_magic)
+    sanitize_mfc_buffer_for_gen2_magic();
 
   if (!mf_configure(r.pdi))
     return false;
@@ -321,7 +330,7 @@ bool write_blank_mfc(bool write_block_zero)
   // Completely write the card, but skipping block 0 if we don't need to write on it
   for (; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach new block and need to actually write a data on
-    if (if_need_authenticate(current_block, write_block_zero)) {
+    if (if_need_authenticate(current_block, if_gen_2_magic)) {
       // printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
@@ -345,17 +354,16 @@ bool write_blank_mfc(bool write_block_zero)
   return true;
 }
 
-// Changing Block 0 or configuration block may brick some tags
-// This function will set Block 0 to all 0s and set all the configuration blocks with the default access bits
+// Gen 2 magic can be read/write with Key A with the default access bits
+// This function will set marker bytes for Block 0 and set all the configuration blocks with the default access bits (easier for key cracking)
 void sanitize_mfc_buffer_for_gen2_magic(void)
 {
   uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
   memset(&mtDump, 0, sizeof(mifare_classic_block));
-  for (uint16_t i = 3; i < NR_BLOCKS_4k; i += 4) {
-    if (is_trailer_block(i)) {
-      memcpy(mtDump.amb[i].mbt.abtAccessBits, default_acl, sizeof(default_acl));
-    }
-  }
+  mtDump.amb[0].mbd.abtData[14] = 0xe1;
+  mtDump.amb[0].mbd.abtData[15] = 0xe2;
+  for (uint8_t i = 0; i < NR_TRAILERS_1k; i++)
+    memcpy(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbt.abtAccessBits, default_acl, sizeof(default_acl));
 }
 
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
@@ -387,14 +395,6 @@ bool read_mfc()
   bool try_key_b;
   uint64_t start_time = msclock();
   uint8_t hardnested_runs = 0;
-
-  // Array with default Mifare Classic keys
-  uint8_t defaultKeys[][6] = {
-    { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, // Default key (first key used by program if no user defined key)
-    { 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5 }, // NFCForum MAD key
-    { 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5 },
-    { 0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7 }, // NFCForum content key
-  };
 
   static mifare_param mp;
 
@@ -793,7 +793,6 @@ static bool load_mfc_file(char *file_name)
 }
 
 // If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
-// TODO: Only Gen 3 magic is supported at this moment. Add support for Gen 2 magic
 bool write_mfc(bool force, char *file_name)
 {
   int tag_count;
@@ -899,19 +898,34 @@ bool write_mfc(bool force, char *file_name)
 
     return true;
   } else {
-    printf("Non-Magic Gen 3 tag will be supported in the future release of software.");
-    return false;
+    // All gen 2 magic tags are MFC_TYPE_C14 tags
+    if (last_read_mfc_type != MFC_TYPE_C14) {
+      printf("Unsupported tag!\n");
+      return false;
+    }
+    // Always clean the tag before write
+    // The clean function also ensure the tag is a supported magic tag
+    if (!clean_mfc(force))
+      return false;
+
+    if (!write_blank_mfc(true)) {
+      printf("Write to a new tag failed\n");
+      return false;
+    } else {
+      printf("Write to a Magic tag success!\n");
+      return true;
+    }
   }
 }
 
 // If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
-// TODO: Only Gen 3 magic is supported at this moment. Add support for Gen 2 magic
 bool clean_mfc(bool force)
 {
   int tag_count;
   int res;
   uint8_t abtCmd[21] = { 0x30, 0x00 }; // Gen 3 Magic command for reading Block 0
   uint8_t abtRx[16] = { 0 };
+  uint8_t i;
 
   if (!mf_configure(r.pdi))
     return false;
@@ -978,8 +992,102 @@ bool clean_mfc(bool force)
     }
     return true;
   } else {
-    printf("Non-Magic Gen 3 tag will be supported in the future release of software.");
+    if (t.nt.nti.nai.szUidLen != 4 || t.nt.nti.nai.btSak != 0x08) {
+      printf("Unsupported tag!\n");
+      return false;
+    }
+
+    t.authuid = (uint32_t)bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
+    t.num_sectors = NR_TRAILERS_1k;
+    t.num_blocks = NR_BLOCKS_1k;
+    t.sectors = (void *)calloc(t.num_sectors, sizeof(sector));
+    if (t.sectors == NULL) {
+      ERR("Cannot allocate memory for t.sectors");
+      return false;
+    }
+    // Initialize t.sectors, keys are not known yet
+    for (i = 0; i < (t.num_sectors); i++)
+      t.sectors[i].foundKeyA = t.sectors[i].foundKeyB = false;
+
+    // Try to check keys for sector 0 in order to read Block 0
+    static mifare_param mp;
+    memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
+    if (!mf_select_tag(t, r))
+      return false;
+    for (i = 0; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
+      memcpy(mp.mpa.abtKey, defaultKeys[i], 6);
+      test_keys(&mp, true);
+    }
+
+    if (!t.sectors[0].foundKeyA) {
+      printf("Unsupported tag!\n");
+      free(t.sectors);
+      return false;
+    }
+
+    // Read Block 0
+    memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
+    if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+      printf("Failed to authenticate Block 0!\n");
+      free(t.sectors);
+      return false;
+    }
+
+    if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 0, &mp)) {
+      printf("Failed to read Block 0!\n");
+      free(t.sectors);
+      return false;
+    }
+
+    uint8_t block_0[16];
+    memcpy(block_0, mp.mpd.abtData, 16);
+
+    // Inspect if the last 2 bytes are e1 e2
+    if (!force) {
+      if (block_0[14] != 0xe1 || block_0[15] != 0xe2) {
+        printf("Unsupported tag!\n");
+        free(t.sectors);
+        return false;
+      }
+    }
+    // Write the same data back to check if the tag is a Magic Gen 2 tag
+    if (!mf_select_tag(t, r))
+      return false;
+
+    memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
+    memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+      printf("Authentication error\n");
+      free(t.sectors);
+      return false;
+    }
+
+    memcpy(mp.mpd.abtData, block_0, 16);
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 0, &mp)) {
+      printf("Tag not supported\n");
+      free(t.sectors);
+      return false;
+    }
+
+    printf("Gen 2 Magic tag detected.\n");
+
+    if (!force) {
+      for (i = 0; i < 4; i++) {
+        if (t.nt.nti.nai.abtUid[i])
+          goto crack_key;
+      }
+      printf("Blank tag detected.\n");
+      free(t.sectors);
+      return true;
+    }
+
+  crack_key:
+    // TODO: Will do this in the next phase, crack all the keys, dump the content then wipe the tag
+    free(t.sectors);
     return false;
+
+    free(t.sectors);
+    return true;
   }
 }
 
