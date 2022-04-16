@@ -861,6 +861,45 @@ bool write_mfc(bool force, char *file_name)
     return false;
   }
 
+  // Check and make sure the target tag type matches the source tag type
+  // Check if the last read result is successfull
+  if (last_read_mfc_type == MFC_TYPE_INVALID) {
+    printf("Please read your original tag first before write to a new tag.\n");
+    return false;
+  }
+
+  // Check if the capacity matches
+  if (t.nt.nti.nai.btSak == 0x08 || t.nt.nti.nai.btSak == 0x88) {
+    if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47) {
+      printf("Wrong type of tag detected, please use the same type of magic tag as the original tag.\n");
+      return false;
+    }
+  } else if (t.nt.nti.nai.btSak == 0x18) {
+    if (last_read_mfc_type == MFC_TYPE_C14 || last_read_mfc_type == MFC_TYPE_C17) {
+      printf("Wrong type of tag detected, please use the same type of magic tag as the original tag.\n");
+      return false;
+    }
+  } else {
+    printf("Wrong type of tag detected, please use the same type of magic tag as the original tag.\n");
+    return false;
+  }
+
+  // Check if the UID length matches
+  if (t.nt.nti.nai.szUidLen == 4) {
+    if (last_read_mfc_type == MFC_TYPE_C17 || last_read_mfc_type == MFC_TYPE_C47) {
+      printf("Wrong type of tag detected, please use the same type of magic tag as the original tag.\n");
+      return false;
+    }
+  } else if (t.nt.nti.nai.szUidLen == 7) {
+    if (last_read_mfc_type == MFC_TYPE_C14 || last_read_mfc_type == MFC_TYPE_C44) {
+      printf("Wrong type of tag detected, please use the same type of magic tag as the original tag.\n");
+      return false;
+    }
+  } else {
+    printf("Software bug detected, please report bug.\n");
+    return false;
+  }
+
   // Use raw send/receive methods
   if (nfc_device_set_property_bool(r.pdi, NP_EASY_FRAMING, false) < 0) {
     nfc_perror(r.pdi, "nfc_configure");
@@ -887,12 +926,7 @@ bool write_mfc(bool force, char *file_name)
           break;
       }
     }
-    // As of here, the tag is a blank tag and is ready for writting data on
-    // Check if the last read result is successfull
-    if (last_read_mfc_type == MFC_TYPE_INVALID) {
-      printf("Please read your original tag first before write to a new tag\n");
-      return false;
-    }
+
     // Gen3 magic use special command to write Block 0
     memset(abtCmd, 0, sizeof(abtCmd));
     memcpy(abtCmd, "\x90\xf0\xcc\xcc\x10", 5);
