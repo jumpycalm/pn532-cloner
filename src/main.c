@@ -100,12 +100,18 @@ static const uint8_t blank_key[6] = { 0 };
 static const uint8_t default_data_block[16] = { 0 };
 static const uint8_t default_trailer_block[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x80, 0x69, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
-// Array with default Mifare Classic keys
+// Array with default MIFARE Classic keys (Keys for Sestor 0)
 static uint8_t defaultKeys[][6] = {
-  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, // Default key (first key used by program if no user defined key)
+  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, // Factory default key
   { 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5 }, // NFCForum MAD key
   { 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5 },
   { 0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7 }, // NFCForum content key
+};
+
+// Array with special MIFARE Classic keys (keys for non-Sector 0)
+static uint8_t specialKeys[][6] = {
+  { 0x6a, 0x19, 0x87, 0xc4, 0x0a, 0x21 }, // Salto Key A
+  { 0x7f, 0x33, 0x62, 0x5b, 0xc1, 0x29 }, // Salto Key B
 };
 
 static void pn532_cloner_usage()
@@ -541,7 +547,7 @@ bool read_mfc()
 
   print_nfc_target(&t.nt, false);
 
-  // Test the default keys
+  // Test the facotry default keys
   remaining_keys_to_be_found = t.num_sectors * 2;
   memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
   printf("\nChecking encryption keys, please wait up to 8s\n");
@@ -553,11 +559,21 @@ bool read_mfc()
   else
     remaining_keys_to_be_found -= test_key_res;
 
-  // For all non-default keys, only test Block 0 as if the key does not work for Block 0,
+  // For all non-factory default keys, only test Block 0 as if the key does not work for Block 0,
   // they will unlikely to be able to work with other blocks as well.
   for (i = 1; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, defaultKeys[i], sizeof(defaultKeys[i]));
     test_key_res = test_keys(&mp, true, false);
+    if (test_key_res < 0)
+      goto out;
+    else
+      remaining_keys_to_be_found -= test_key_res;
+  }
+
+  // Test special keys
+  for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
+    memcpy(mp.mpa.abtKey, specialKeys[i], sizeof(specialKeys[i]));
+    test_key_res = test_keys(&mp, false, false);
     if (test_key_res < 0)
       goto out;
     else
@@ -1150,7 +1166,8 @@ bool clean_mfc(bool force)
     }
 
   crack_key:
-    // Check default key
+    // Check keys for non-Sector 0. For 1K 4-Byte UID MIFARE Classic tags, we don't need to check dictionary as
+    // non of the tags we have seen use fixed keys
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
     if (!mf_select_tag(t, r))
       return false;
