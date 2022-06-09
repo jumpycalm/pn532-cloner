@@ -35,7 +35,9 @@ Plug the reader into the PC, run the application and follow the instruction on t
 
 ## Windows
 
-Only MSYS2 environment is supported. Install MSYS2. Open the MinGW-w64 terminal, clone this project first:
+### MSYS2
+
+Install MSYS2. Open the MinGW-w64 terminal, clone this project first:
 ```
 git clone https://github.com/jumpycalm/pn532-cloner.git
 ```
@@ -44,11 +46,13 @@ Navigate into the project folder, create a new folder called `build`, go to that
 cd pn532-cloner
 mkdir build
 cd build
-cmake -G "MinGW Makefiles" ../src
+cmake -G "MinGW Makefiles" ../
 mingw32-make
 ```
 After the software is built, a PN532-Cloner.exe file should be generated. Just double click on this application and run it.
 
+### CLion
+Simply create a project from version control, enter the GitHub link for this project.
 
 ## macOS
 
