@@ -16,7 +16,7 @@
 
 #include "../hardnested.h"
 #include <errno.h>
-#include <lzma.h>
+#include "../../lib_win/lzma.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
