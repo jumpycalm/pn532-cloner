@@ -141,6 +141,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
   uint8_t current_block;
   int res;
   mifare_param mp_tmp; // Used for trying Key B if Key B is able to recover from reading the trailer block
+  uint8_t temp_KeyB[6];
 
   for (uint8_t i = 0; i < t.num_sectors; i++) {
     bool just_found_key_a = false;
@@ -191,17 +192,24 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
           return -1;
       } else {
         if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, current_block, &mp_tmp)) >= 0) {
-          if (!memcmp(mp_tmp.mpd.abtData + 10, blank_key, sizeof(blank_key)))
+          memcpy(temp_KeyB, mp_tmp.mpd.abtData + 10, 6);
+          if (!memcmp(temp_KeyB, blank_key, sizeof(blank_key))) {
+            if (!mf_configure(r.pdi))
+              return -1;
+            if (!mf_select_tag(t, r))
+              return -1;
             continue;
+          }
 
-          memcpy(mp_tmp.mpa.abtKey, mp_tmp.mpd.abtData + 10, sizeof(mp_tmp.mpa.abtKey));
+          memcpy(&mp_tmp, mp, sizeof(mp_tmp));
+          memcpy(mp_tmp.mpa.abtKey, temp_KeyB, 6);
           if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, &mp_tmp)) < 0) {
             if (!mf_configure(r.pdi))
               return -1;
             if (!mf_select_tag(t, r))
               return -1;
           } else {
-            memcpy(t.sectors[i].KeyB, mp_tmp.mpd.abtData + 10, sizeof(t.sectors[i].KeyB));
+            memcpy(t.sectors[i].KeyB, temp_KeyB, sizeof(t.sectors[i].KeyB));
             t.sectors[i].foundKeyB = true;
             num_of_exploited_keys++;
           }
