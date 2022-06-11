@@ -155,7 +155,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
         if (!mf_select_tag(t, r))
           return -1;
       } else {
-        // Save all information about successfull keyA authentization
+        // Save all information about successfully keyA authentication
         memcpy(t.sectors[i].KeyA, mp->mpa.abtKey, sizeof(mp->mpa.abtKey));
         t.sectors[i].foundKeyA = true;
         num_of_exploited_keys++;
@@ -178,7 +178,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
       }
     }
     // Logic for trying to get Key B by reading the trailer block
-    // Because for comercial application, this backdoor is sealed, the success rate is very low
+    // Because for commercial application, this backdoor is sealed, the success rate is very low
     // Only perform this task if found Key A but not Key B
     // All the gen 2 tags wrote by this application keep this back door open
     if (just_found_key_a && !t.sectors[i].foundKeyB && !test_key_a_only) {
@@ -194,8 +194,8 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
           if (!memcmp(mp_tmp.mpd.abtData + 10, blank_key, sizeof(blank_key)))
             continue;
 
-          memcpy(mp->mpa.abtKey, mp_tmp.mpd.abtData + 10, sizeof(mp_tmp.mpa.abtKey));
-          if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, mp)) < 0) {
+          memcpy(mp_tmp.mpa.abtKey, mp_tmp.mpd.abtData + 10, sizeof(mp_tmp.mpa.abtKey));
+          if ((mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, current_block, &mp_tmp)) < 0) {
             if (!mf_configure(r.pdi))
               return -1;
             if (!mf_select_tag(t, r))
