@@ -10,7 +10,7 @@ Only NXP PN532 board via UART to USB interface is supported. The PN532 boards ar
 
 # Supported operating system
 
-Only Windows and macOS (under development) are supported. There's no plan to support Linux. For Linux applications, you can use [libnfc](https://github.com/nfc-tools/libnfc) directly.
+Only Windows and macOS are supported. There's no plan to support Linux. For Linux applications, you can use [libnfc](https://github.com/nfc-tools/libnfc) directly.
 
 # Supported RFID tags
 ## Read
@@ -19,7 +19,7 @@ MIFARE Classic, MIFARE Ultralight (under development), NTAG (under development).
 Gen 3 Magic MIFARE Classic, Gen 2 Magic MIFARE Classic, Magic MIFARE Ultralight (under development).
 
 # Usage
-## Reader driver installation
+## Reader driver installation (Windows)
 If you purchased a driver from me, Windows should already have the driver for the reader. Just plug the reader into the PC, wait for a minute or 2, the correct driver should get installed automatically. If the driver is not installed correctly, you can open the Device Manager and install the driver with the following instruction:
 
 ![Driver not installed](image/Driver_not_installed.PNG)
@@ -27,6 +27,9 @@ If you purchased a driver from me, Windows should already have the driver for th
 ![Driver install Step 2](image/Install_driver_2.PNG)
 ![Driver install Step 3](image/Install_driver_3.PNG)
 ![Driver installed](image/Driver_installed.PNG)
+
+## Reader driver installation (macOS)
+The reader is plug-n-play on macOS. No need to install any driver.
 
 ## How to clone a tag
 Plug the reader into the PC, run the application and follow the instruction on the screen. Simply read the original tag, after the read is complete, write the data onto a Magic tag (a special changeable tag). Please note, the MIFARE Classic tags are encrypted tags, it takes time to crack the keys and read the tag. The application will provide you with an ETA when you start to read a tag.
@@ -56,7 +59,7 @@ Simply create a project from version control, enter the GitHub link for this pro
 
 ## macOS
 
-To be supported soon
+Install CLion. Create a project from version control, enter the GitHub link for this project.
 
 # License
 
