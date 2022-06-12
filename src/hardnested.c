@@ -158,8 +158,8 @@ uint32_t *get_bitflip_data(odd_even_t odd_even, uint16_t bitflip)
 static void print_progress_header(void)
 {
   printf("\nHardnested key cracking using %d threads\n", num_CPUs());
-  printf("Target | #Nonces | Activity                                                | Remaining brute force states\n");
-  printf("----------------------------------------------------------------------------------------------------------");
+  printf("Trg|Nonce|Activity                                          |Remaining BF states\n");
+  printf("--------------------------------------------------------------------------------");
 }
 
 void hardnested_print_progress(uint32_t nonces, char *activity, float brute_force, uint8_t trgKeySector, uint8_t trgKeyType, bool newline)
@@ -173,14 +173,14 @@ void hardnested_print_progress(uint32_t nonces, char *activity, float brute_forc
     keyType = '?';
   }
 
-  // if (!newline)
-  //   fflush(stdout);
+  if (!newline)
+    fflush(stdout);
   if (newline)
     printf("\n");
   else
     printf("\r");
 
-  printf(" %2d%c   | %7d | %-55s | %15.0f", trgKeySector, keyType, nonces, activity, brute_force);
+  printf("%2d%c|%5u|%-50s|%15.0f", trgKeySector, keyType, nonces, activity, brute_force);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

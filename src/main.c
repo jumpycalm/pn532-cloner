@@ -116,19 +116,20 @@ static uint8_t specialKeys[][6] = {
 
 static void pn532_cloner_usage()
 {
-  printf("\n\n\n");
-  printf("###################################################################################\n");
+  printf("\n");
+  printf("################################################################################\n");
   printf("Usage:\n");
   printf("r             - (R)ead a tag\n");
-  printf("w             - (W)rite to a magic tag using the data from the most recent read tag\n");
-  printf("w <File name> - (W)rite to a magic tag using the data from a saved dump file\n");
-  printf("c             - (C)lean/Restore a magic tag to the factory default\n");
+  printf("w             - (W)rite to a tag using the data from the most recent read tag\n");
+  printf("w <File name> - (W)rite to a tag using the data from a saved dump file\n");
+  printf("c             - (C)lean/Restore a tag to the factory default\n");
+  printf("h             - Show this (H)elp message\n");
   printf("e             - (E)xit\n");
   printf("\n");
   printf("Example:\n");
   printf("Enter \"r\" to read a tag\n");
-  printf("Enter \"w\" to write to a magic tag using the data from the tag you just read\n");
-  printf("###################################################################################\n");
+  printf("Enter \"w\" to write to a tag using the data from the tag you just read\n");
+  printf("################################################################################\n");
   printf("\n");
 }
 
@@ -1288,6 +1289,7 @@ int main(int argc, char *const argv[])
   // Print banner and version
   printf("PN532 Cloner     Ver: " PN532_CLONER_VER "\n");
   printf("https://github.com/jumpycalm/pn532-cloner\n");
+  pn532_cloner_usage();
 
   while (true) {
     // Before performing any task, alway call mf_init() to check if the reader is connected
@@ -1296,9 +1298,11 @@ int main(int argc, char *const argv[])
       continue;
     }
 
-    pn532_cloner_usage();
+    printf("Reader is ready for the command.\n");
 
     fgets(line, sizeof(line), stdin);
+    if (line[0] == 'h' || line[0] == 'H')
+      pn532_cloner_usage();
     if (line[0] == 'r' || line[0] == 'R')
       read_mfc();
     else if (line[0] == 'w' || line[0] == 'W') {
