@@ -35,12 +35,12 @@
 #define _XOPEN_SOURCE 1 // To enable getopt
 
 #include "util_posix.h"
+#include <ctype.h> // isxdigit
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h> // stat
-#include <windows.h> //Sleep
 #ifdef _MSC_VER
 #include "getopt.h"
 #include "unistd_w.h"
@@ -980,7 +980,7 @@ bool write_mfc(bool force, char *file_name)
     // Must keep the RF field on for at least 1 second for the tag to complete initialization
     // even after we have alreagy got a response from the tag.
     // Failure to do so, will brick the tag
-    Sleep(1000);
+    msleep(1000);
     if (res == 2) {
       printf("Start writing to the Magic tag, please wait up to 5s\n");
       if (!write_blank_gen3()) {
@@ -1083,7 +1083,7 @@ bool clean_mfc(bool force)
     // Must keep the RF field on for at least 1 second for the tag to complete initialization
     // even after we have alreagy got a response from the tag.
     // Failure to do so, will brick the tag
-    Sleep(1000);
+    msleep(1000);
     if (res == 2) {
       printf("Clean a Gen 3 MIFARE Classic tag successfully!\n");
       return true;

@@ -1,7 +1,9 @@
 #include "hardnested_bf_core.h"
 #include "../crapto1.h"
 #include "../parity.h"
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 

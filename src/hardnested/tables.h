@@ -16,7 +16,11 @@
 
 #include "../hardnested.h"
 #include <errno.h>
+#if defined(_WIN32)
 #include "../../lib_win/lzma.h"
+#elif defined(__APPLE__)
+#include "../../lib_darwin_x64/lzma.h"
+#endif
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

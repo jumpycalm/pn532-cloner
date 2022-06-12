@@ -2,14 +2,26 @@ cmake_minimum_required (VERSION 3.22)
 project (PN532-Cloner)
 set(CMAKE_C_STANDARD 11)
 
-# Static link libries
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
+# Static link libraries
+# TOO: Setting this flag break Darwin build, address this issue in the next change
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
 
 # Turn on some compiler flags to detect programming errors
 # The following line of code can be commented out while debuging the code
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
+if(CMAKE_SYSTEM MATCHES Windows)
+    find_library(LIBLZMA lzma HINTS lib_win)
+    set(SOURCES src/uart_win.c)
+elseif(CMAKE_SYSTEM MATCHES Darwin)
+    find_library(LIBLZMA lzma HINTS lib_darwin_x64)
+    set(SOURCES src/uart_darwin.c)
+else()
+    message(FATAL_ERROR "Unsupported operating system")
+endif()
+
 set(SOURCES
+        ${SOURCES}
         src/crapto1.c
         src/crypto1.c
         src/getopt.c
@@ -27,7 +39,6 @@ set(SOURCES
         src/pn532_uart.c
         src/slre.c
         src/target-subr.c
-        src/uart.c
         src/util_posix.c
         src/util.c
         src/hardnested.c
@@ -39,6 +50,5 @@ set(SOURCES
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-find_library(LIBLZMA liblzma HINTS lib_win)
-target_link_libraries(${PROJECT_NAME}  PUBLIC ${LIBLZMA})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBLZMA})
 

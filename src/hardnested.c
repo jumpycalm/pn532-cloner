@@ -27,7 +27,6 @@
 #include <time.h>
 #ifdef _MSC_VER
 #include <direct.h>
-#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -1279,7 +1278,7 @@ static bool acquire_nonces(uint8_t src_sector, uint8_t src_key_type, uint8_t *ke
       goto out;
     // If the thread worker hasn't collected any nonce yet, wait for 1 second
     if (processed_nonces >= new_nonce_num) {
-      Sleep(1000);
+      msleep(1000);
       continue;
     }
     // Add collected nonces to the nonce list
