@@ -2,15 +2,15 @@ cmake_minimum_required (VERSION 3.22)
 project (PN532-Cloner)
 set(CMAKE_C_STANDARD 11)
 
-# Static link libraries
-# TOO: Setting this flag break Darwin build, address this issue in the next change
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
+# Uncomment the following line to get more verbose output from CMake
+#set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Turn on some compiler flags to detect programming errors
 # The following line of code can be commented out while debuging the code
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
 if(CMAKE_SYSTEM MATCHES Windows)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static") # Statically link libwinpthread
     find_library(LIBLZMA lzma HINTS lib_win)
     set(SOURCES src/uart_win.c)
 elseif(CMAKE_SYSTEM MATCHES Darwin)
