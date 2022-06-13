@@ -1001,7 +1001,7 @@ static void apply_sum_a0(void)
   }
 }
 
-#define MAX_ENC_NONCE_BUFFER 5000 // If we need to collect more than 5000 nonces, something is wrong
+#define MAX_ENC_NONCE_BUFFER 50000 // If we need to collect more than 50000 nonces, something is wrong
 static bool continue_acquire_nonces;
 static bool acquire_nonce_status;
 static uint32_t enc_byte[MAX_ENC_NONCE_BUFFER];
