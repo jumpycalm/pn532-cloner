@@ -34,6 +34,19 @@ The reader is plug-n-play on macOS. No need to install any driver.
 ## How to clone a tag
 Plug the reader into the PC, run the application and follow the instruction on the screen. Simply read the original tag, after the read is complete, write the data onto a Magic tag (a special changeable tag). Please note, the MIFARE Classic tags are encrypted tags, it takes time to crack the keys and read the tag. The application will provide you with an ETA when you start to read a tag.
 
+I have included the built binary files in the [Releases](https://github.com/jumpycalm/pn532-cloner/releases) section for your convenience. Below is the screenshot of the application
+![Application Windows](image/PN532-Cloner_Win.PNG)
+![Application Mac](image/PN532-Cloner_Mac.PNG)
+
+### Fix macOS "cannot be opened" error
+macOS has secure measurement to make a user run our application harder. If you are getting the following error message, you will have to go to the System Preferences -> Security & Privacy. Click on "Click the lock to make changes", enter your password, then click on OK on the error message. After that, you should be able to see the option to be able to run the application. I have included screenshot with step by step instruction below.
+If you have concern the safety of running the application, you can inspect every line of source code and build the application from the source (instruction below).
+![Mac cannot be opened error](image/Mac_cannot_be_opened_error.PNG)
+![Security and Privacy settings](image/Security_and_Privacy_settings.PNG)
+![Mac cannot be opened Click on OK](image/Mac_cannot_be_opened_Click_on_OK.PNG)
+![Open anyway](image/Open_anyway.PNG)
+![Can open](image/Can_open.PNG)
+
 # Build instruction
 
 ## Windows
@@ -59,7 +72,26 @@ Simply create a project from version control, enter the GitHub link for this pro
 
 ## macOS
 
-Install CLion. Create a project from version control, enter the GitHub link for this project.
+### Xcode
+You can build the Xcode project file with CMake. Simply download and install CMake. The instruction can be found on CMake's official website: [Installing CMake](https://cmake.org/install/)
+
+After the CMake is installed, clone this project first:
+```
+git clone https://github.com/jumpycalm/pn532-cloner.git
+```
+Navigate into the project folder, create a new folder called `build`, go to that folder, use the CMake to generate the Xcode project file.
+```
+cd pn532-cloner
+mkdir build
+cd build
+cmake -G "Xcode" ../
+```
+If you are getting `Xcode 1.5 not supported.` error, you need to manually specify the Xcode location. `sudo /usr/bin/xcode-select --switch /Users/admin/Downloads/Xcode.app`, you may need to change the command to match your Xcode.app location.
+
+After the Xcode project file is generated, you can open Xcode and open the project and build the project inside the Xcode.
+
+###
+Install CLion. Create a project from version control, enter the GitHub link for this project. Build the project from CLion.
 
 # License
 
