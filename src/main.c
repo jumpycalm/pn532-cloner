@@ -586,9 +586,12 @@ salto_tag_type check_salto_tag_type()
   } else if (last_read_mfc_type == MFC_TYPE_C44 || last_read_mfc_type == MFC_TYPE_C47) {
     if (memcmp(mtDump.amb[3].mbd.abtData, default_trailer_block, sizeof(default_trailer_block)))
       return SALTO_NONE;
-    if (memcmp(mtDump.amb[NR_BLOCKS_4k].mbd.abtData, specialKeys[0], sizeof(specialKeys[0])))
+    if (!memcmp(mtDump.amb[NR_BLOCKS_1k].mbd.abtData, default_trailer_block, sizeof(default_trailer_block)) && !memcmp(mtDump.amb[NR_BLOCKS_4k].mbd.abtData, specialKeys[0], sizeof(specialKeys[0])))
+      return SALTO_4K;
+    else if (!memcmp(mtDump.amb[NR_BLOCKS_4k].mbd.abtData, default_trailer_block, sizeof(default_trailer_block)) && !memcmp(mtDump.amb[NR_BLOCKS_1k].mbd.abtData, specialKeys[0], sizeof(specialKeys[0])))
+      return SALTO_1K;
+    else
       return SALTO_NONE;
-    return SALTO_4K;
   } else
     return SALTO_NONE;
 }
