@@ -857,6 +857,7 @@ read_tag:
     if (!res_auth) {
       res_read = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp);
       if (!res_read) {
+        fflush(stdout);
         printf("\r" WHITE_SPACE);
         printf("\r Read Block %u/%u with key A success!", block, t.num_blocks);
       } else if (res_read == NFC_ERFTRANS)
@@ -866,6 +867,7 @@ read_tag:
     } else if (res_read == NFC_ERFTRANS)
       try_key_b = true;
     else {
+      fflush(stdout);
       printf("\r" WHITE_SPACE);
       printf("\r Read Block %u/%u with key A failed!", block, t.num_blocks);
       goto out;
@@ -874,12 +876,14 @@ read_tag:
     if (try_key_b) {
       memcpy(mp.mpa.abtKey, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
       if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, block, &mp)) {
+        fflush(stdout);
         printf("\r" WHITE_SPACE);
         printf("\r Authentic Block %u/%u with key B failed!", block, t.num_blocks);
         goto out;
       }
       if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, block, &mp)) {
         printf("\r" WHITE_SPACE);
+        fflush(stdout);
         printf("\r Read Block %u/%u with key B failed!", block, t.num_blocks);
         goto out;
       }
