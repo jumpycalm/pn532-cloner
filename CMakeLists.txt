@@ -12,7 +12,7 @@ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 if (CMAKE_SYSTEM MATCHES Windows)
     set (PLATFORM_EXTENSION -Win-x64)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static") # Statically link libwinpthread
-    find_library (LIBLZMA lzma HINTS lib_win)
+    find_library (LIBLZMA lzma HINTS lib_win_x64)
     set(SOURCES src/uart_win.c)
 elseif (CMAKE_SYSTEM MATCHES Darwin)
     set (PLATFORM_EXTENSION -Mac-x64)
