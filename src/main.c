@@ -128,6 +128,7 @@ static uint8_t defaultKeys[][6] = {
 static uint8_t specialKeys[][6] = {
   { 0x6a, 0x19, 0x87, 0xc4, 0x0a, 0x21 }, // Salto Key A
   { 0x7f, 0x33, 0x62, 0x5b, 0xc1, 0x29 }, // Salto Key B
+  { 0x2a, 0x2c, 0x13, 0xcc, 0x24, 0x2a }, // Dormakaba Sector 1 key
 };
 
 static void pn532_cloner_usage()
@@ -152,7 +153,7 @@ static void pn532_cloner_usage()
 // Test if the given key is valid, if the key is valid, add the key to the found key in global variable
 // Return number of new exploited keys
 // Return -1 if error is detected such as tag is removed
-int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
+int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only, bool test_key_b_only)
 {
   int8_t num_of_exploited_keys = 0;
   uint8_t current_block;
@@ -164,7 +165,7 @@ int8_t test_keys(mifare_param *mp, bool test_block_0_only, bool test_key_a_only)
     bool just_found_key_a = false;
     current_block = get_trailer_block_num_from_sector_num(i);
     // Logic for testing Key A, if Key A is broken, try to see if we can break Key B
-    if (!t.sectors[i].foundKeyA) {
+    if (!t.sectors[i].foundKeyA && !test_key_b_only) {
       if ((res = mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, mp)) < 0) {
         if (res != NFC_EMFCAUTHFAIL) {
           nfc_perror(r.pdi, "mfoc_nfc_initiator_mifare_cmd");
@@ -596,6 +597,28 @@ salto_tag_type check_salto_tag_type()
     return SALTO_NONE;
 }
 
+// Dormakaba's Sector 1 key is always fixed
+bool check_if_dormakaba()
+{
+  if (!memcmp(mtDump.amb[7].mbt.abtKeyA, specialKeys[2], sizeof(specialKeys[2])))
+    return true;
+  else
+    return false;
+}
+
+// If none of Sector 0's key is in the dictionary, we may potentionally brick the tag (i.e. Unable to clean the tag)
+bool inspect_sector_0_key()
+{
+  uint8_t found_keys = 0;
+  for (uint8_t i = 0; i < sizeof(defaultKeys[0]); i++) {
+    if (!memcmp(mtDump.amb[3].mbt.abtKeyA, defaultKeys[i], 6))
+      found_keys++;
+    if (!memcmp(mtDump.amb[3].mbt.abtKeyB, defaultKeys[i], 6))
+      found_keys++;
+  }
+  return (bool)found_keys;
+}
+
 // Modern MIFARE Classic tags are all MIFARE Classic EV1 tags, which means they are not vulnerable to old faster attacks
 // such as Darkside attack, nested attack. Therefore, we only use hardnested attack to recover the unknown keys
 bool read_mfc()
@@ -724,7 +747,7 @@ bool read_mfc()
   printf("\nChecking encryption keys, please wait up to 8s\n");
 
   memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
-  test_key_res = test_keys(&mp, false, false);
+  test_key_res = test_keys(&mp, false, false, false);
   if (test_key_res < 0)
     goto out;
   else
@@ -734,7 +757,7 @@ bool read_mfc()
   // they will unlikely to be able to work with other blocks as well.
   for (i = 1; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, defaultKeys[i], sizeof(defaultKeys[i]));
-    test_key_res = test_keys(&mp, true, false);
+    test_key_res = test_keys(&mp, true, false, false);
     if (test_key_res < 0)
       goto out;
     else
@@ -744,7 +767,7 @@ bool read_mfc()
   // Test special keys
   for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, specialKeys[i], sizeof(specialKeys[i]));
-    test_key_res = test_keys(&mp, false, false);
+    test_key_res = test_keys(&mp, false, false, false);
     if (test_key_res < 0)
       goto out;
     else
@@ -798,7 +821,7 @@ bool read_mfc()
         goto out;
       if (!mf_select_tag(t, r))
         goto out;
-      test_key_res = test_keys(&mp, false, false);
+      test_key_res = test_keys(&mp, false, false, false);
       if (test_key_res < 0)
         goto out;
       if (!test_key_res) {
@@ -821,7 +844,7 @@ bool read_mfc()
         goto out;
       if (!mf_select_tag(t, r))
         goto out;
-      test_key_res = test_keys(&mp, false, false);
+      test_key_res = test_keys(&mp, false, false, false);
       if (test_key_res < 0)
         goto out;
       if (!test_key_res) {
@@ -955,6 +978,8 @@ out:
       printf("\nSalto PFM01K detected!\n");
     else if (check_salto_tag_type() == SALTO_4K)
       printf("\nSalto PFM04K detected!\n");
+    if (check_if_dormakaba())
+      printf("\nDormakaba detected!\n");
     printf("\nRead tag success!\n");
     return true;
   } else {
@@ -1043,6 +1068,12 @@ bool write_mfc(bool force, char *file_name)
       printf("Unable to open %s\n", file_name);
       return false;
     }
+  }
+
+  // Make sure we don't accidently write non-dictionary Sector 0 keys
+  if (!inspect_sector_0_key()) {
+    printf("Cloning this tag is not supported at this moment, if you wish to get this tag duplicated, please contact us, we can add support.\n");
+    return false;
   }
 
   if (!mf_configure(r.pdi))
@@ -1340,21 +1371,43 @@ bool clean_mfc(bool force)
       return false;
     for (i = 0; i < sizeof(defaultKeys) / sizeof(defaultKeys[0]); i++) {
       memcpy(mp.mpa.abtKey, defaultKeys[i], 6);
-      test_key_res = test_keys(&mp, true, true);
+      test_key_res = test_keys(&mp, true, true, false);
       if (test_key_res > 0)
         remaining_keys_to_be_found -= test_key_res;
     }
 
+    // Dormakaba's Sector 0 always use diversified Key A, but Key B is always the default key
+    // Therefore, in the case we cannot find Key A easily, we will use Key B instead
+    bool use_key_a = true;
     if (!t.sectors[0].foundKeyA) {
-      printf("Unsupported tag!\n");
-      return false;
+      remaining_keys_to_be_found = t.num_sectors;
+      memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
+      memcpy(mp.mpa.abtKey, default_key, 6);
+      if (!mf_select_tag(t, r))
+        return false;
+      test_key_res = test_keys(&mp, true, false, true);
+      if (test_key_res > 0)
+        remaining_keys_to_be_found -= test_key_res;
+      if (!t.sectors[0].foundKeyB) {
+        printf("Unsupported tag!\n");
+        return false;
+      } else
+        use_key_a = false;
     }
 
     // Read Block 0 or Block 1
-    memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
-    if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
-      printf("Failed to authenticate Block 0!\n");
-      return false;
+    if (use_key_a) {
+      memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
+      if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+        printf("Failed to authenticate Block 0 with Key A!\n");
+        return false;
+      }
+    } else {
+      memcpy(mp.mpa.abtKey, t.sectors[0].KeyB, sizeof(t.sectors[0].KeyB));
+      if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, 0, &mp)) {
+        printf("Failed to authenticate Block 0 with Key B!\n");
+        return false;
+      }
     }
 
     if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 0, &mp)) {
@@ -1370,10 +1423,18 @@ bool clean_mfc(bool force)
       return false;
 
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
-    memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
-    if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
-      printf("Block 0 Authentication error\n");
-      return false;
+    if (use_key_a) {
+      memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+        printf("Block 0 Authentication with Key A error\n");
+        return false;
+      }
+    } else {
+      memcpy(mp.mpa.abtKey, t.sectors[0].KeyB, sizeof(t.sectors[0].KeyB));
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, 0, &mp)) {
+        printf("Block 0 Authentication with Key B error\n");
+        return false;
+      }
     }
 
     memcpy(mp.mpd.abtData, block_0, 16);
@@ -1400,10 +1461,18 @@ bool clean_mfc(bool force)
       if (!mf_select_tag(t, r))
         return false;
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
-      memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
-      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 1, &mp)) {
-        printf("Block 1 Authentication error\n");
-        return false;
+      if (use_key_a) {
+        memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
+        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 1, &mp)) {
+          printf("Block 1 Authentication with Key A error\n");
+          return false;
+        }
+      } else {
+        memcpy(mp.mpa.abtKey, t.sectors[0].KeyB, sizeof(t.sectors[0].KeyB));
+        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, 1, &mp)) {
+          printf("Block 1 Authentication with Key B error\n");
+          return false;
+        }
       }
       if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 1, &mp)) {
         printf("Failed to read Block 1!\n");
@@ -1434,15 +1503,28 @@ bool clean_mfc(bool force)
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
     if (!mf_select_tag(t, r))
       return false;
-    memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
-    test_key_res = test_keys(&mp, false, true);
-    if (test_key_res > 0)
-      remaining_keys_to_be_found -= test_key_res;
-    for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
-      memcpy(mp.mpa.abtKey, specialKeys[i], 6);
-      test_key_res = test_keys(&mp, false, true);
+    if (use_key_a) {
+      memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
+      test_key_res = test_keys(&mp, false, true, false);
       if (test_key_res > 0)
         remaining_keys_to_be_found -= test_key_res;
+      for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
+        memcpy(mp.mpa.abtKey, specialKeys[i], 6);
+        test_key_res = test_keys(&mp, false, true, false);
+        if (test_key_res > 0)
+          remaining_keys_to_be_found -= test_key_res;
+      }
+    } else {
+      memcpy(mp.mpa.abtKey, defaultKeys[0], sizeof(defaultKeys[0]));
+      test_key_res = test_keys(&mp, false, false, true);
+      if (test_key_res > 0)
+        remaining_keys_to_be_found -= test_key_res;
+      for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
+        memcpy(mp.mpa.abtKey, specialKeys[i], 6);
+        test_key_res = test_keys(&mp, false, false, true);
+        if (test_key_res > 0)
+          remaining_keys_to_be_found -= test_key_res;
+      }
     }
 
     if (remaining_keys_to_be_found) {
@@ -1457,38 +1539,73 @@ bool clean_mfc(bool force)
       uint8_t hardnested_src_key[6];
       i = t.num_sectors - 1;
       while (true) {
-        if (t.sectors[i].foundKeyA) {
-          hardnested_src_sector = i;
-          hardnested_src_key_type = MC_AUTH_A;
-          memcpy(hardnested_src_key, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
-          break;
+        if (use_key_a) {
+          if (t.sectors[i].foundKeyA) {
+            hardnested_src_sector = i;
+            hardnested_src_key_type = MC_AUTH_A;
+            memcpy(hardnested_src_key, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
+            break;
+          }
+        } else {
+          if (t.sectors[i].foundKeyB) {
+            hardnested_src_sector = i;
+            hardnested_src_key_type = MC_AUTH_B;
+            memcpy(hardnested_src_key, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
+            break;
+          }
         }
         i--;
       }
 
       for (i = 0; i < t.num_sectors; i++) {
-        if (!t.sectors[i].foundKeyA) {
-          if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A)) {
-            printf("Clean tag failed at hardnested\n");
-            return false;
+        if (use_key_a) {
+          if (!t.sectors[i].foundKeyA) {
+            if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_A)) {
+              printf("Clean tag failed at hardnested\n");
+              return false;
+            }
+            memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
+            if (!mf_configure(r.pdi))
+              return false;
+            if (!mf_select_tag(t, r))
+              return false;
+            test_key_res = test_keys(&mp, false, true, false);
+            if (test_key_res < 0)
+              return false;
+            if (!test_key_res) {
+              printf("Hardnested found the wrong key, please report bug!\n");
+              return false;
+            }
+            remaining_keys_to_be_found -= test_key_res;
+            // Print overall status
+            printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
+            if (remaining_keys_to_be_found)
+              printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
           }
-          memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
-          if (!mf_configure(r.pdi))
-            return false;
-          if (!mf_select_tag(t, r))
-            return false;
-          test_key_res = test_keys(&mp, false, true);
-          if (test_key_res < 0)
-            return false;
-          if (!test_key_res) {
-            printf("Hardnested found the wrong key, please report bug!\n");
-            return false;
+        } else {
+          if (!t.sectors[i].foundKeyB) {
+            if (!mfnestedhard(hardnested_src_sector, hardnested_src_key_type, hardnested_src_key, i, MC_AUTH_B)) {
+              printf("Clean tag failed at hardnested\n");
+              return false;
+            }
+            memcpy(mp.mpa.abtKey, hardnested_broken_key, sizeof(hardnested_broken_key));
+            if (!mf_configure(r.pdi))
+              return false;
+            if (!mf_select_tag(t, r))
+              return false;
+            test_key_res = test_keys(&mp, false, false, true);
+            if (test_key_res < 0)
+              return false;
+            if (!test_key_res) {
+              printf("Hardnested found the wrong key, please report bug!\n");
+              return false;
+            }
+            remaining_keys_to_be_found -= test_key_res;
+            // Print overall status
+            printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
+            if (remaining_keys_to_be_found)
+              printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
           }
-          remaining_keys_to_be_found -= test_key_res;
-          // Print overall status
-          printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
-          if (remaining_keys_to_be_found)
-            printf("The ETA to crack the remaining encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
         }
 
         if (!remaining_keys_to_be_found)
@@ -1496,7 +1613,7 @@ bool clean_mfc(bool force)
       }
     }
 
-    // As of here, we have the Key A for all the sectors
+    // As of here, we have the Key A or Key B for all the sectors
     if (!mf_configure(r.pdi))
       return false;
 
@@ -1511,10 +1628,18 @@ bool clean_mfc(bool force)
         if (authenticate_first_block)
           authenticate_first_block = false;
         memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
-        memcpy(mp.mpa.abtKey, t.sectors[get_sector_num_from_block_num(i)].KeyA, 6);
-        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, i, &mp)) {
-          printf("Authentication error\n");
-          return false;
+        if (use_key_a) {
+          memcpy(mp.mpa.abtKey, t.sectors[get_sector_num_from_block_num(i)].KeyA, 6);
+          if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, i, &mp)) {
+            printf("Authentication error\n");
+            return false;
+          }
+        } else {
+          memcpy(mp.mpa.abtKey, t.sectors[get_sector_num_from_block_num(i)].KeyB, 6);
+          if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, i, &mp)) {
+            printf("Authentication error\n");
+            return false;
+          }
         }
       }
       if (is_trailer_block(i))
@@ -1530,9 +1655,16 @@ bool clean_mfc(bool force)
     // Write Block 0 or 1
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
     memcpy(mp.mpa.abtKey, default_key, sizeof(default_key));
-    if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
-      printf("Authentication error\n");
-      return false;
+    if (use_key_a) {
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
+        printf("Authentication with Key A error\n");
+        return false;
+      }
+    } else {
+      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, 0, &mp)) {
+        printf("Authentication with Key B error\n");
+        return false;
+      }
     }
     uint8_t blank_gen2_block0[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe1, 0xe2 };
     memcpy(mp.mpd.abtData, blank_gen2_block0, sizeof(blank_gen2_block0));
