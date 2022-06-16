@@ -1065,34 +1065,48 @@ bool write_mfc(bool force, char *file_name)
 
   // Salto tags need special handling because Salto tags can be write into a non-magic tag
   salto_tag_type src_salto_tag_type = check_salto_tag_type();
-  salto_compatible_tag_type trg_salto_tag_type = get_salto_compatible_tag_type();
-  if (src_salto_tag_type == SALTO_4K) {
-    if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK) {
-      // Always clean the tag before write
-      // The clean function also ensure the tag is a supported Salto compatible tag
-      if (!clean_mfc(force))
-        return false;
-      if (!write_salto_compatible_tag(true)) {
-        printf("Write to a new tag failed\n");
-        return false;
-      } else {
-        printf("Write to a Salto compatible tag success!\n");
-        return true;
+  if (src_salto_tag_type != SALTO_NONE) {
+    salto_compatible_tag_type trg_salto_tag_type = get_salto_compatible_tag_type();
+    if (src_salto_tag_type == SALTO_4K) {
+      if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK) {
+        // Always clean the tag before write
+        // The clean function also ensure the tag is a supported Salto compatible tag
+        if (!clean_mfc(force))
+          return false;
+        if (!write_salto_compatible_tag(true)) {
+          printf("Write to a new tag failed\n");
+          return false;
+        } else {
+          printf("Write to a Salto compatible tag success!\n");
+          return true;
+        }
+      }
+    } else if (src_salto_tag_type == SALTO_1K) {
+      if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_NON_BLANK) {
+        // Always clean the tag before write
+        // The clean function also ensure the tag is a supported Salto compatible tag
+        if (!clean_mfc(force))
+          return false;
+        if (!write_salto_compatible_tag(false)) {
+          printf("Write to a new tag failed\n");
+          return false;
+        } else {
+          printf("Write to a Salto compatible tag success!\n");
+          return true;
+        }
       }
     }
-  } else if (src_salto_tag_type == SALTO_1K) {
-    if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_NON_BLANK) {
-      // Always clean the tag before write
-      // The clean function also ensure the tag is a supported Salto compatible tag
-      if (!clean_mfc(force))
-        return false;
-      if (!write_salto_compatible_tag(false)) {
-        printf("Write to a new tag failed\n");
-        return false;
-      } else {
-        printf("Write to a Salto compatible tag success!\n");
-        return true;
-      }
+
+    // Need to reslect tag because we tried to read the tag in the above procedure
+    if (!mf_configure(r.pdi))
+      return false;
+
+    if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
+      nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
+      return false;
+    } else if (tag_count == 0) {
+      ERR("No tag found.");
+      return false;
     }
   }
 
