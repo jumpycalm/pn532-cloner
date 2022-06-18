@@ -90,7 +90,7 @@ If you are getting `Xcode 1.5 not supported.` error, you need to manually specif
 
 After the Xcode project file is generated, you can open Xcode and open the project and build the project inside the Xcode.
 
-###
+### Clion
 Install CLion. Create a project from version control, enter the GitHub link for this project. Build the project from CLion.
 
 # License
