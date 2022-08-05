@@ -28,6 +28,8 @@ If you purchased a driver from me, Windows should already have the driver for th
 ![Driver install Step 3](image/Install_driver_3.PNG)
 ![Driver installed](image/Driver_installed.PNG)
 
+If the above method does not work (this is usually due to you are running a old version of Windows), the driver can be found in this repository or search "CH340 driver" on the internet.
+
 ## Reader driver installation (macOS)
 The reader is plug-n-play on macOS. No need to install any driver.
 
