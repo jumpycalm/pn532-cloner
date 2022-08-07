@@ -68,7 +68,7 @@
 
 #define WHITE_SPACE "                                                                            "
 
-#define PN532_CLONER_VER "0.6.0"
+#define PN532_CLONER_VER "0.7.0"
 
 mftag t;
 mfreader r;
