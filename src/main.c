@@ -521,6 +521,20 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
     name = NULL;
 }
 
+void generate_key_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
+{
+  if (num_blocks == NR_BLOCKS_1k && uid_len == 4)
+    sprintf(name, "C14%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_1k && uid_len == 7)
+    sprintf(name, "C17%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  if (num_blocks == NR_BLOCKS_4k && uid_len == 4)
+    sprintf(name, "C44%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
+    sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  else
+    name = NULL;
+}
+
 salto_compatible_tag_type get_salto_compatible_tag_type()
 {
   static mifare_param mp;
@@ -634,6 +648,7 @@ bool read_mfc()
   bool try_key_b;
   uint64_t start_time = msclock();
   uint8_t hardnested_runs = 0;
+  char key_file_name[MAX_FILE_LEN];
 
   static mifare_param mp;
 
@@ -730,6 +745,9 @@ bool read_mfc()
   // Pick a file name based on the tag's type and UID
   generate_file_name(file_name, t.num_blocks, t.nt.nti.nai.szUidLen, t.nt.nti.nai.abtUid);
 
+  // Generate the broken key file name
+  generate_key_file_name(key_file_name, t.num_blocks, t.nt.nti.nai.szUidLen, t.nt.nti.nai.abtUid);
+
   // Check if the file is already exist (data is already on file)
   struct stat buffer;
   if (!stat(file_name, &buffer)) {
@@ -767,6 +785,35 @@ bool read_mfc()
   // Test special keys
   for (i = 0; i < sizeof(specialKeys) / sizeof(specialKeys[0]); i++) {
     memcpy(mp.mpa.abtKey, specialKeys[i], sizeof(specialKeys[i]));
+    test_key_res = test_keys(&mp, false, false, false);
+    if (test_key_res < 0)
+      goto out;
+    else
+      remaining_keys_to_be_found -= test_key_res;
+  }
+
+  // Test already broken keys
+  uint8_t broken_keys[79][6] = { { 0 } }; // 4K tag has 40 sectors
+  uint8_t broken_key_num = 0;
+
+  pfDump = fopen(key_file_name, "rb");
+  if (pfDump) {
+    while (broken_key_num < 79) {
+      if (fread(broken_keys[broken_key_num], 1, 6, pfDump) != 6)
+        break;
+      broken_key_num++;
+    }
+    fclose(pfDump);
+  }
+
+  if (broken_key_num) {
+    printf("Loaded %u keys from the log:\n", broken_key_num);
+    for (i = 0; i < broken_key_num; i++)
+      printf("%02x%02x%02x%02x%02x%02x\n", broken_keys[i][0], broken_keys[i][1], broken_keys[i][2], broken_keys[i][3], broken_keys[i][4], broken_keys[i][5]);
+  }
+
+  for (i = 0; i < broken_key_num; i++) {
+    memcpy(mp.mpa.abtKey, broken_keys[i], sizeof(broken_keys[i]));
     test_key_res = test_keys(&mp, false, false, false);
     if (test_key_res < 0)
       goto out;
@@ -829,6 +876,20 @@ bool read_mfc()
         goto out;
       }
       remaining_keys_to_be_found -= test_key_res;
+
+      // Save hardnested broken key
+      if (!(pfDump = fopen(key_file_name, "a"))) {
+        fprintf(stderr, "Saving broken key log file failed\n");
+        return false;
+      }
+      if (pfDump) {
+        if (fwrite(hardnested_broken_key, 1, 6, pfDump) != 6) {
+          fprintf(stdout, "Error, cannot save key to the log\n");
+          fclose(pfDump);
+        }
+        fclose(pfDump);
+      }
+
       // Print overall status
       printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
       if (remaining_keys_to_be_found)
@@ -852,6 +913,20 @@ bool read_mfc()
         goto out;
       }
       remaining_keys_to_be_found -= test_key_res;
+
+      // Save hardnested broken key
+      if (!(pfDump = fopen(key_file_name, "a"))) {
+        fprintf(stderr, "Saving broken key log file failed\n");
+        return false;
+      }
+      if (pfDump) {
+        if (fwrite(hardnested_broken_key, 1, 6, pfDump) != 6) {
+          fprintf(stdout, "Error, cannot save key to the log\n");
+          fclose(pfDump);
+        }
+        fclose(pfDump);
+      }
+
       // Print overall status
       printf("%u/%u keys have been cracked!\n", remaining_keys_to_be_found_before_hardnested - remaining_keys_to_be_found, remaining_keys_to_be_found_before_hardnested);
       if (remaining_keys_to_be_found)
