@@ -50,7 +50,6 @@
 #define BITFLIP_2ND_BYTE 0x0200
 #define CHECK_1ST_BYTES 0x01
 #define CHECK_2ND_BYTES 0x02
-#define TARGET_BF_STATE 5000000000 // Larger than this values leads to longer BF time
 
 static uint16_t sums[NUM_SUMS] = { 0, 32, 56, 64, 80, 96, 104, 112, 120, 128, 136, 144, 152, 160, 176, 192, 200, 224, 256 }; // possible sum property values
 
@@ -829,7 +828,7 @@ static bool shrink_key_space(float *brute_forces)
   }
   *brute_forces = MIN(brute_forces1, brute_forces2);
 
-  return ((hardnested_stage & CHECK_2ND_BYTES) && (*brute_forces < TARGET_BF_STATE));
+  return ((hardnested_stage & CHECK_2ND_BYTES));
 }
 
 static void estimate_sum_a8(void)

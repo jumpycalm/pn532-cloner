@@ -838,21 +838,30 @@ bool read_mfc()
   remaining_keys_to_be_found_before_hardnested = remaining_keys_to_be_found;
 
   // Use hardnested to crack the unknown keys
+  // For the source key, always the the source key closest to the next key needs to be crack
   uint8_t hardnested_src_sector;
   uint8_t hardnested_src_key_type;
   uint8_t hardnested_src_key[6];
-  i = t.num_sectors - 1;
+
+  // Loop to find the first sector that has unknown key
+  uint8_t unknown_key_sector = 0;
+  while (t.sectors[unknown_key_sector].foundKeyA && t.sectors[unknown_key_sector].foundKeyB)
+    unknown_key_sector++;
+
+  i = unknown_key_sector;
   while (true) {
     if (t.sectors[i].foundKeyA) {
       hardnested_src_sector = i;
       hardnested_src_key_type = MC_AUTH_A;
       memcpy(hardnested_src_key, t.sectors[i].KeyA, sizeof(t.sectors[i].KeyA));
+      printf("Start hardnested key cracking using Sector %u Key A: %02x%02x%02x%02x%02x%02x", i, hardnested_src_key[0], hardnested_src_key[1], hardnested_src_key[2], hardnested_src_key[3], hardnested_src_key[4], hardnested_src_key[5]);
       break;
     }
     if (t.sectors[i].foundKeyB) {
       hardnested_src_sector = i;
       hardnested_src_key_type = MC_AUTH_B;
       memcpy(hardnested_src_key, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
+      printf("Start hardnested key cracking using Sector %u Key B: %02x%02x%02x%02x%02x%02x", i, hardnested_src_key[0], hardnested_src_key[1], hardnested_src_key[2], hardnested_src_key[3], hardnested_src_key[4], hardnested_src_key[5]);
       break;
     }
     i--;
