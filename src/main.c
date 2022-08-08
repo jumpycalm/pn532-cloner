@@ -1611,6 +1611,53 @@ bool clean_mfc(bool force)
       }
     }
 
+    // Some tags uses MAD key in non-0 sector, therefore, check the MAD key for non-0 sector
+    if (use_key_a) {
+      memcpy(mp.mpa.abtKey, defaultKeys[1], sizeof(defaultKeys[1]));
+      test_key_res = test_keys(&mp, false, true, false);
+      if (test_key_res > 0)
+        remaining_keys_to_be_found -= test_key_res;
+    } else {
+      memcpy(mp.mpa.abtKey, defaultKeys[1], sizeof(defaultKeys[1]));
+      test_key_res = test_keys(&mp, false, false, true);
+      if (test_key_res > 0)
+        remaining_keys_to_be_found -= test_key_res;
+    }
+
+    // Load hardnested broken keys
+    char key_file_name[MAX_FILE_LEN];
+    generate_key_file_name(key_file_name, t.num_blocks, t.nt.nti.nai.szUidLen, t.nt.nti.nai.abtUid);
+    uint8_t broken_keys[31][6] = { { 0 } }; // 1K tag has 16 sectors
+    uint8_t broken_key_num = 0;
+
+    FILE *pfDump = fopen(key_file_name, "rb");
+    if (pfDump) {
+      while (broken_key_num < 31) {
+        if (fread(broken_keys[broken_key_num], 1, 6, pfDump) != 6)
+          break;
+        broken_key_num++;
+      }
+      fclose(pfDump);
+    }
+
+    if (broken_key_num) {
+      printf("Loaded %u keys from the log:\n", broken_key_num);
+      for (i = 0; i < broken_key_num; i++)
+        printf("%02x%02x%02x%02x%02x%02x\n", broken_keys[i][0], broken_keys[i][1], broken_keys[i][2], broken_keys[i][3], broken_keys[i][4], broken_keys[i][5]);
+    }
+
+    for (i = 0; i < broken_key_num; i++) {
+      memcpy(mp.mpa.abtKey, broken_keys[i], sizeof(broken_keys[i]));
+      if (use_key_a)
+        test_key_res = test_keys(&mp, false, true, false);
+      else
+        test_key_res = test_keys(&mp, false, false, true);
+      if (test_key_res < 0)
+        break;
+      else
+        remaining_keys_to_be_found -= test_key_res;
+    }
+
     if (remaining_keys_to_be_found) {
       printf("This tag is encrypted with %u encryption keys.\n", remaining_keys_to_be_found);
       printf("The ETA to crack all the encryption keys is %u minutes.\n", (uint16_t)remaining_keys_to_be_found * 5);
