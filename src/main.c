@@ -488,7 +488,7 @@ bool write_salto_compatible_tag(bool if_4k_tag)
 // This function will set marker bytes for Block 0 and set all the configuration blocks with the default access bits (easier for key cracking)
 void sanitize_mfc_buffer_for_gen2_magic(void)
 {
-  uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
+  uint8_t default_acl[] = { 0xff, 0x07, 0x80 };
   mtDump.amb[0].mbd.abtData[14] = 0xe1;
   mtDump.amb[0].mbd.abtData[15] = 0xe2;
   for (uint8_t i = 0; i < NR_TRAILERS_1k; i++)
@@ -499,7 +499,7 @@ void sanitize_mfc_buffer_for_gen2_magic(void)
 // This function will also set marker bytes in Block 1
 void sanitize_mfc_buffer_for_salto_compatible_tag(void)
 {
-  uint8_t default_acl[] = { 0xff, 0x07, 0x80, 0x69 };
+  uint8_t default_acl[] = { 0xff, 0x07, 0x80 };
   mtDump.amb[1].mbd.abtData[13] = 0x01; // Non-0 stands for non-blank tag
   mtDump.amb[1].mbd.abtData[14] = 0xe1;
   mtDump.amb[1].mbd.abtData[15] = 0xe2;
