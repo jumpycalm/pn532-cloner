@@ -516,6 +516,16 @@ void sanitize_mfc_buffer_for_salto_compatible_tag(void)
     memcpy(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbt.abtAccessBits, default_acl, sizeof(default_acl));
 }
 
+// Reset global buffer
+// 1. All data set to 0
+// 2. All trailer set to default
+void reset_mfc_buffer(void)
+{
+  memset(&mtDump, 0, sizeof(mtDump));
+  for (uint8_t i = 0; i < NR_TRAILERS_4k; i++)
+    memcmp(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbd.abtData, default_trailer_block, sizeof(default_trailer_block));
+}
+
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
 {
   if (num_blocks == NR_BLOCKS_1k && uid_len == 4)
@@ -526,6 +536,10 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
     sprintf(name, "C44%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  else if (num_blocks == NR_BLOCKS_2k && uid_len == 4)
+    sprintf(name, "P24%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_2k && uid_len == 7)
+    sprintf(name, "P27%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
@@ -540,6 +554,10 @@ void generate_key_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uin
     sprintf(name, "C44%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+  else if (num_blocks == NR_BLOCKS_2k && uid_len == 4)
+    sprintf(name, "P24%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_2k && uid_len == 7)
+    sprintf(name, "P27%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
@@ -708,8 +726,9 @@ bool read_mfc()
   case 0x88:
   case 0x28:
     if (get_rats_is_2k(t, r)) {
-      printf("MIFARE Plus 2K tagis not supported\n");
-      return false;
+      printf("Detected MIFARE Plus 2K %llu-Byte SL1 tag\n", t.nt.nti.nai.szUidLen);
+      t.num_sectors = NR_TRAILERS_2k;
+      t.num_blocks = NR_BLOCKS_2k;
     } else {
       t.num_sectors = NR_TRAILERS_1k;
       t.num_blocks = NR_BLOCKS_1k;
@@ -956,7 +975,9 @@ bool read_mfc()
   }
 
 read_tag:
-  if (t.num_sectors == NR_TRAILERS_1k)
+  // In case we are reading a 2K tag, need to fill up the rest 2K space to prevent setting the wrong trailer
+  reset_mfc_buffer();
+  if (t.num_sectors != NR_TRAILERS_4k)
     printf("All keys found! Reading the tag.\n");
   else
     printf("All keys found! Reading the tag, please wait up to 6s.\n");
@@ -1320,7 +1341,7 @@ bool write_mfc(bool force, char *file_name)
     }
     res = nfc_initiator_transceive_bytes(r.pdi, abtCmd, sizeof(abtCmd), NULL, 0, 2000);
     // Must keep the RF field on for at least 1 second for the tag to complete initialization
-    // even after we have alreagy got a response from the tag.
+    // even after we have already got a response from the tag.
     // Failure to do so, will brick the tag
     msleep(1000);
     if (res == 2) {
