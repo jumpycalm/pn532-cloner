@@ -523,7 +523,7 @@ void reset_mfc_buffer(void)
 {
   memset(&mtDump, 0, sizeof(mtDump));
   for (uint8_t i = 0; i < NR_TRAILERS_4k; i++)
-    memcmp(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbd.abtData, default_trailer_block, sizeof(default_trailer_block));
+    memcpy(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbd.abtData, default_trailer_block, sizeof(default_trailer_block));
 }
 
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
@@ -975,7 +975,7 @@ bool read_mfc()
   }
 
 read_tag:
-  // In case we are reading a 2K tag, need to fill up the rest 2K space to prevent setting the wrong trailer
+  // In case we are reading a 2K/1K tag, need to fill up the rest 2K space to prevent setting the wrong trailer
   reset_mfc_buffer();
   if (t.num_sectors != NR_TRAILERS_4k)
     printf("All keys found! Reading the tag.\n");
@@ -1088,12 +1088,34 @@ out:
   printf("Total time elapsed reading this tag: %llu s.\n", (msclock() - start_time) / 1000);
 
   if (read_success) {
-    if (check_salto_tag_type() == SALTO_1K)
+    if (check_salto_tag_type() == SALTO_1K) {
       printf("\nSalto PFM01K detected!\n");
-    else if (check_salto_tag_type() == SALTO_4K)
+      if (t.nt.nti.nai.szUidLen == 7)
+        printf("Please write this tag to a 4K 7-byte tag");
+    } else if (check_salto_tag_type() == SALTO_4K)
       printf("\nSalto PFM04K detected!\n");
     if (check_if_dormakaba())
       printf("\nDormakaba detected!\n");
+
+    // Debug
+    // for (int i = 0; i <= 16 * NR_BLOCKS_4k; i += 16)
+    //   printf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+    //       mtDump.amb->mbd.abtData[i],
+    //       mtDump.amb->mbd.abtData[i + 1],
+    //       mtDump.amb->mbd.abtData[i + 2],
+    //       mtDump.amb->mbd.abtData[i + 3],
+    //       mtDump.amb->mbd.abtData[i + 4],
+    //       mtDump.amb->mbd.abtData[i + 5],
+    //       mtDump.amb->mbd.abtData[i + 6],
+    //       mtDump.amb->mbd.abtData[i + 7],
+    //       mtDump.amb->mbd.abtData[i + 8],
+    //       mtDump.amb->mbd.abtData[i + 9],
+    //       mtDump.amb->mbd.abtData[i + 10],
+    //       mtDump.amb->mbd.abtData[i + 11],
+    //       mtDump.amb->mbd.abtData[i + 12],
+    //       mtDump.amb->mbd.abtData[i + 13],
+    //       mtDump.amb->mbd.abtData[i + 14],
+    //       mtDump.amb->mbd.abtData[i + 15]);
     printf("\nRead tag success!\n");
     return true;
   } else {
@@ -1132,6 +1154,9 @@ static bool load_mfc_file(char *file_name)
     if (sscanf(file_name + 3 + i * 2, "%2hhx", last_read_uid + i) != 1)
       return false;
   }
+
+  // Reset the mtDump (fill with the default data in case we need to write 1 1K/2K tag to a 4K tag)
+  reset_mfc_buffer();
 
   // Load the content into mtDump
   // First need to patch the file_name as the last entry of the file_name may be a carriage return instead of a 0
@@ -1208,6 +1233,12 @@ bool write_mfc(bool force, char *file_name)
     return false;
   }
 
+  // Writing to a 1k 7-byte tag is no longer supported
+  // If the source tag is a 1K 7-byte, we will write to a 4K 7-byte tag instead
+  // If last read tag is C17,
+  if (last_read_mfc_type == MFC_TYPE_C17) {
+    last_read_mfc_type = MFC_TYPE_C47;
+  }
   // Salto tags need special handling because Salto tags can be write into a non-magic tag
   salto_tag_type src_salto_tag_type = check_salto_tag_type();
   if (src_salto_tag_type != SALTO_NONE) {
