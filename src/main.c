@@ -68,7 +68,7 @@
 
 #define WHITE_SPACE "                                                                            "
 
-#define PN532_CLONER_VER "0.9.0"
+#define PN532_CLONER_VER "0.9.1"
 
 mftag t;
 mfreader r;
@@ -1014,6 +1014,10 @@ read_tag:
     }
 
     if (try_key_b) {
+      if (!mf_select_tag(t, r)) {
+        printf("\r Unable to select tag!");
+        goto out;
+      }
       memcpy(mp.mpa.abtKey, t.sectors[i].KeyB, sizeof(t.sectors[i].KeyB));
       if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, block, &mp)) {
         fflush(stdout);
