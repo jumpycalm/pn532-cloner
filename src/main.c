@@ -423,7 +423,7 @@ bool write_blank_gen3(void)
   // Completely write the card, but skipping block 0
   for (current_block = 1; current_block < total_blocks; current_block++) {
     // Authenticate everytime we reach new block and need to actually write a data on
-    if (if_need_authenticate(current_block, false)) {
+    if (if_need_authenticate(current_block, false) || current_block == 1) {
       // printf("Block %u needs authentication\n", current_block);
       memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
       memcpy(mp.mpa.abtKey, default_key, 6);
