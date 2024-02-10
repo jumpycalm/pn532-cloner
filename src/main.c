@@ -91,7 +91,6 @@ typedef enum {
   MFC_TYPE_C47,
 } mfc_type;
 
-
 typedef enum {
   SALTO_NONE = 0,
   SALTO_1K,
@@ -122,12 +121,6 @@ static uint8_t specialKeys[][6] = {
   { 0x6a, 0x19, 0x87, 0xc4, 0x0a, 0x21 }, // Salto Key A
   { 0x7f, 0x33, 0x62, 0x5b, 0xc1, 0x29 }, // Salto Key B
   { 0x2a, 0x2c, 0x13, 0xcc, 0x24, 0x2a }, // Dormakaba Sector 1 key
-  { 0x48, 0x49, 0x44, 0x20, 0x49, 0x53 }, // Legacy Key A
-  { 0x20, 0x47, 0x52, 0x45, 0x41, 0x54 }, // Legacy Key B
-  { 0x3B, 0x7E, 0x4F, 0xD5, 0x75, 0xAD }, // SO Key A
-  { 0x11, 0x49, 0x6F, 0x97, 0x75, 0x2A }, // SO Key B
-  { 0x01, 0x20, 0xbf, 0x67, 0x2a, 0x64 }, // ER key A
-  { 0xfb, 0x0b, 0x20, 0xdf, 0x1f, 0x34 }, // ER Key B
   { 0xb5, 0x78, 0xf3, 0x8a, 0x5c, 0x61 }, // Seen on the Blue fob used in the USA, this key may also used in Sector 0
   { 0x00, 0x00, 0x01, 0x4b, 0x5c, 0x31 }, // Seen on the Blue fob used in the USA
 };
@@ -1062,7 +1055,7 @@ static bool load_mfc_file(char *file_name)
   return true;
 }
 
-// If the force flag is not set, will only clean tags with the Block 0 last 2 bytes with e1 and e2
+// If the force flag is not set, will only clean tags that have already been marked
 bool write_mfc(bool force, char *file_name)
 {
   int tag_count;
@@ -1363,7 +1356,7 @@ bool clean_mfc(bool force)
         use_key_a = false;
     }
 
-    // Read Block 0 or Block 1
+    // Read Block 0
     if (use_key_a) {
       memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
       if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 0, &mp)) {
@@ -1432,44 +1425,8 @@ bool clean_mfc(bool force)
         return true;
       }
     } else {
-      // If the tag is not a magic tag, we will try to use Block 1 as the marker
-      if (!mf_select_tag(t, r))
-        return false;
-      memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
-      if (use_key_a) {
-        memcpy(mp.mpa.abtKey, t.sectors[0].KeyA, sizeof(t.sectors[0].KeyA));
-        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 1, &mp)) {
-          printf("Block 1 Authentication with Key A error\n");
-          return false;
-        }
-      } else {
-        memcpy(mp.mpa.abtKey, t.sectors[0].KeyB, sizeof(t.sectors[0].KeyB));
-        if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_B, 1, &mp)) {
-          printf("Block 1 Authentication with Key B error\n");
-          return false;
-        }
-      }
-      if (mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 1, &mp)) {
-        printf("Failed to read Block 1!\n");
-        return false;
-      }
-
-      uint8_t block_1[16];
-      memcpy(block_1, mp.mpd.abtData, 16);
-      if (!force) {
-        if (block_1[14] != 0xe1 || block_1[15] != 0xe2) {
-          printf("Unsupported tag!\n");
-          return false;
-        }
-      }
-      printf("Non-magic tag detected.\n");
-      // If the force flag is not set and if the Block1[13] is 0, that means the tag is a blank tag, no need to crack keys and try to clean the tag
-      if (!force) {
-        if (block_1[13])
-          goto crack_key;
-        printf("Blank tag detected.\n");
-        return true;
-      }
+      printf("Unsupported tag!\n");
+      return false;
     }
 
   crack_key:
