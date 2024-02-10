@@ -91,14 +91,6 @@ typedef enum {
   MFC_TYPE_C47,
 } mfc_type;
 
-typedef enum {
-  SALTO_COMPATIBLE_INVALID = 0,
-  SALTO_COMPATIBLE_NONE,
-  SALTO_COMPATIBLE_1K_NON_BLANK,
-  SALTO_COMPATIBLE_1K_BLANK,
-  SALTO_COMPATIBLE_4K_NON_BLANK,
-  SALTO_COMPATIBLE_4K_BLANK,
-} salto_compatible_tag_type;
 
 typedef enum {
   SALTO_NONE = 0,
@@ -447,52 +439,6 @@ bool write_blank_gen3(void)
   return true;
 }
 
-// Write to a Salto compatible tag that has been initialized to factory default
-// Assume we have already performed all the checks
-bool write_salto_compatible_tag(bool if_4k_tag)
-{
-  uint32_t current_block;
-  uint32_t total_blocks = if_4k_tag ? NR_BLOCKS_4k + 1 : NR_BLOCKS_1k + 1;
-  mifare_param mp;
-
-  sanitize_mfc_buffer_for_salto_compatible_tag();
-
-  if (!mf_configure(r.pdi))
-    return false;
-
-  if (nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt) <= 0) {
-    printf("Error: tag was removed\n");
-    return false;
-  }
-
-  // Completely write the card, but skipping block 0
-  for (current_block = 1; current_block < total_blocks; current_block++) {
-    // Authenticate everytime we reach new block and need to actually write a data on
-    if (if_need_authenticate(current_block, true) || current_block == 1) {
-      // printf("Block %u needs authentication\n", current_block);
-
-      memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
-      memcpy(mp.mpa.abtKey, default_key, 6);
-      if (!nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, current_block, &mp)) {
-        printf("Authentication error\n");
-        return false;
-      }
-    }
-
-    // Write data
-    if (if_need_write_current_block(current_block)) {
-      memcpy(mp.mpd.abtData, mtDump.amb[current_block].mbd.abtData, sizeof(mp.mpd.abtData));
-      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, current_block, &mp)) {
-        printf("Failed at writing block %d \n", current_block);
-        return false;
-      }
-      // printf("Block %u write success.\n", current_block);
-    }
-  }
-
-  return true;
-}
-
 // Gen 2 magic can be read/write with Key A with the default access bits
 // This function will set marker bytes for Block 0 and set all the configuration blocks with the default access bits (easier for key cracking)
 void sanitize_mfc_buffer_for_gen2_magic(void)
@@ -503,19 +449,6 @@ void sanitize_mfc_buffer_for_gen2_magic(void)
   for (uint8_t i = 0; i < NR_TRAILERS_1k; i++)
     memcpy(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbt.abtAccessBits, default_acl, sizeof(default_acl));
 }
-
-// Salto systems work with the default access bits, force all the blocks with the default access bits to avoid bricking the tag
-// This function will also set marker bytes in Block 1
-void sanitize_mfc_buffer_for_salto_compatible_tag(void)
-{
-  uint8_t default_acl[] = { 0xff, 0x07, 0x80 };
-  mtDump.amb[1].mbd.abtData[13] = 0x01; // Non-0 stands for non-blank tag
-  mtDump.amb[1].mbd.abtData[14] = 0xe1;
-  mtDump.amb[1].mbd.abtData[15] = 0xe2;
-  for (uint8_t i = 0; i < NR_TRAILERS_4k; i++)
-    memcpy(mtDump.amb[get_trailer_block_num_from_sector_num(i)].mbt.abtAccessBits, default_acl, sizeof(default_acl));
-}
-
 // Reset global buffer
 // 1. All data set to 0
 // 2. All trailer set to default
@@ -560,61 +493,6 @@ void generate_key_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uin
     sprintf(name, "P27%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
-}
-
-salto_compatible_tag_type get_salto_compatible_tag_type()
-{
-  static mifare_param mp;
-  if (!mf_configure(r.pdi))
-    return SALTO_COMPATIBLE_INVALID;
-
-  int tag_count;
-  if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
-    nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
-    return SALTO_COMPATIBLE_INVALID;
-  } else if (tag_count == 0) {
-    ERR("No tag found.");
-    return SALTO_COMPATIBLE_INVALID;
-  }
-
-  if (t.nt.nti.nai.szUidLen == 4 || t.nt.nti.nai.szUidLen == 7)
-    t.authuid = (uint32_t)bytes_to_num(t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
-  else {
-    printf("Unsupported tag!\n");
-    return SALTO_COMPATIBLE_INVALID;
-  }
-  if (t.nt.nti.nai.btSak == 0x01 || t.nt.nti.nai.btSak == 0x08 || t.nt.nti.nai.btSak == 0x88 || t.nt.nti.nai.btSak == 0x28) {
-    t.num_sectors = NR_TRAILERS_1k;
-    t.num_blocks = NR_BLOCKS_1k;
-  } else if (t.nt.nti.nai.btSak == 0x18) {
-    t.num_sectors = NR_TRAILERS_4k;
-    t.num_blocks = NR_BLOCKS_4k;
-  } else {
-    printf("Unsupported tag!\n");
-    return SALTO_COMPATIBLE_INVALID;
-  }
-
-  // Check if the tag is a blank Salto compatible tag
-  memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
-  memcpy(mp.mpa.abtKey, default_key, sizeof(default_key));
-  if (!mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_AUTH_A, 1, &mp)) {
-    if (!mfoc_nfc_initiator_mifare_cmd(r.pdi, MC_READ, 1, &mp)) {
-      if (mp.mpd.abtData[14] == 0xe1 && mp.mpd.abtData[15] == 0xe2) {
-        if (t.num_blocks == NR_BLOCKS_1k) {
-          if (mp.mpd.abtData[13] == 0x00)
-            return SALTO_COMPATIBLE_1K_BLANK;
-          else
-            return SALTO_COMPATIBLE_1K_NON_BLANK;
-        } else {
-          if (mp.mpd.abtData[13] == 0x00)
-            return SALTO_COMPATIBLE_4K_BLANK;
-          else
-            return SALTO_COMPATIBLE_4K_NON_BLANK;
-        }
-      }
-    }
-  }
-  return SALTO_COMPATIBLE_NONE;
 }
 
 salto_tag_type check_salto_tag_type()
@@ -685,18 +563,6 @@ bool read_mfc()
 
   // Initialize t.sectors, keys are not known yet
   memset(&t, 0, sizeof(t));
-
-  salto_compatible_tag_type salto_comp_tag_type = get_salto_compatible_tag_type();
-  if (salto_comp_tag_type == SALTO_COMPATIBLE_INVALID) {
-    printf("Read tag failed.\n");
-    return false;
-  } else if (salto_comp_tag_type == SALTO_COMPATIBLE_1K_BLANK) {
-    printf("Blank Salto PFM01K compatible tag.\n");
-    return false;
-  } else if (salto_comp_tag_type == SALTO_COMPATIBLE_4K_BLANK) {
-    printf("Blank Salto PFM01K, PFM04K compatible tag.\n");
-    return false;
-  }
 
   if (!mf_configure(r.pdi))
     return false;
@@ -1243,52 +1109,6 @@ bool write_mfc(bool force, char *file_name)
   if (last_read_mfc_type == MFC_TYPE_C17) {
     last_read_mfc_type = MFC_TYPE_C47;
   }
-  // Salto tags need special handling because Salto tags can be write into a non-magic tag
-  salto_tag_type src_salto_tag_type = check_salto_tag_type();
-  if (src_salto_tag_type != SALTO_NONE) {
-    salto_compatible_tag_type trg_salto_tag_type = get_salto_compatible_tag_type();
-    if (src_salto_tag_type == SALTO_4K) {
-      if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK) {
-        // Always clean the tag before write
-        // The clean function also ensure the tag is a supported Salto compatible tag
-        if (!clean_mfc(force))
-          return false;
-        if (!write_salto_compatible_tag(true)) {
-          printf("Write to a new tag failed\n");
-          return false;
-        } else {
-          printf("Write to a Salto compatible tag success!\n");
-          return true;
-        }
-      }
-    } else if (src_salto_tag_type == SALTO_1K) {
-      if (trg_salto_tag_type == SALTO_COMPATIBLE_4K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_4K_NON_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_BLANK || trg_salto_tag_type == SALTO_COMPATIBLE_1K_NON_BLANK) {
-        // Always clean the tag before write
-        // The clean function also ensure the tag is a supported Salto compatible tag
-        if (!clean_mfc(force))
-          return false;
-        if (!write_salto_compatible_tag(false)) {
-          printf("Write to a new tag failed\n");
-          return false;
-        } else {
-          printf("Write to a Salto compatible tag success!\n");
-          return true;
-        }
-      }
-    }
-
-    // Need to reslect tag because we tried to read the tag in the above procedure
-    if (!mf_configure(r.pdi))
-      return false;
-
-    if ((tag_count = nfc_initiator_select_passive_target(r.pdi, nm, NULL, 0, &t.nt)) < 0) {
-      nfc_perror(r.pdi, "nfc_initiator_select_passive_target");
-      return false;
-    } else if (tag_count == 0) {
-      ERR("No tag found.");
-      return false;
-    }
-  }
 
   // Check if the capacity matches
   if (t.nt.nti.nai.btSak == 0x08 || t.nt.nti.nai.btSak == 0x88) {
@@ -1422,7 +1242,6 @@ bool clean_mfc(bool force)
   uint8_t abtCmd[21] = { 0x30, 0x00 }; // Gen 3 Magic command for reading Block 0
   uint8_t abtRx[16] = { 0 };
   uint16_t i;
-  bool non_magic_tag = false;
 
   if (!mf_configure(r.pdi))
     return false;
@@ -1513,7 +1332,7 @@ bool clean_mfc(bool force)
     int remaining_keys_to_be_found_before_hardnested;
     int test_key_res;
 
-    // Try to check keys for sector 0 in order to read Block 0 and Block 1
+    // Try to check keys for sector 0 in order to read Block 0
     static mifare_param mp;
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, sizeof(mp.mpa.abtAuthUid));
     if (!mf_select_tag(t, r))
@@ -1567,6 +1386,13 @@ bool clean_mfc(bool force)
     uint8_t block_0[16];
     memcpy(block_0, mp.mpd.abtData, 16);
 
+    // Inspect if the last 2 bytes are e1 e2
+    if (!force) {
+      if (block_0[14] != 0xe1 || block_0[15] != 0xe2) {
+        printf("Unsupported tag!\n");
+        return false;
+      }
+    }
     // Write the same data back to check if the tag is a Magic Gen 2 tag
     if (!mf_select_tag(t, r))
       return false;
@@ -1637,7 +1463,6 @@ bool clean_mfc(bool force)
         }
       }
       printf("Non-magic tag detected.\n");
-      non_magic_tag = true;
       // If the force flag is not set and if the Block1[13] is 0, that means the tag is a blank tag, no need to crack keys and try to clean the tag
       if (!force) {
         if (block_1[13])
@@ -1817,9 +1642,8 @@ bool clean_mfc(bool force)
       printf("Error: tag was removed\n");
       return false;
     }
-    i = non_magic_tag ? 2 : 1;
     bool authenticate_first_block = true;
-    for (; i <= t.num_blocks; i++) {
+    for (i = 1; i <= t.num_blocks; i++) {
       if (authenticate_first_block || is_first_block(i)) {
         if (authenticate_first_block)
           authenticate_first_block = false;
@@ -1848,7 +1672,7 @@ bool clean_mfc(bool force)
       }
     }
 
-    // Write Block 0 or 1
+    // Write Block 0
     memcpy(mp.mpa.abtAuthUid, t.nt.nti.nai.abtUid + t.nt.nti.nai.szUidLen - 4, 4);
     memcpy(mp.mpa.abtKey, default_key, sizeof(default_key));
     if (use_key_a) {
@@ -1864,23 +1688,12 @@ bool clean_mfc(bool force)
     }
     uint8_t blank_gen2_block0[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe1, 0xe2 };
     memcpy(mp.mpd.abtData, blank_gen2_block0, sizeof(blank_gen2_block0));
-    if (non_magic_tag) {
-      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 1, &mp)) {
-        printf("Failed at writing block 1.\n");
-        return false;
-      }
-      if (t.num_blocks == NR_BLOCKS_1k)
-        printf("Clean a Salto PFM01K compatible tag successfully!\n");
-      else
-        printf("Clean a Salto PFM01K, PFM04K compatible tag successfully!\n");
-    } else {
-      if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 0, &mp)) {
-        printf("Failed at writing block 0.\n");
-        return false;
-      }
-      printf("Clean a Gen 2 MIFARE Classic tag successfully!\n");
+    if (!nfc_initiator_mifare_cmd(r.pdi, MC_WRITE, 0, &mp)) {
+      printf("Failed at writing block 0.\n");
+      return false;
     }
 
+    printf("Clean a Gen 2 MIFARE Classic tag successfully!\n");
     return true;
   }
 }
