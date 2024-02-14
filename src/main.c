@@ -463,10 +463,10 @@ void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t
     sprintf(name, "C44%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
-  else if (num_blocks == NR_BLOCKS_2k && uid_len == 4)
-    sprintf(name, "P24%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
-  else if (num_blocks == NR_BLOCKS_2k && uid_len == 7)
-    sprintf(name, "P27%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_2k)
+    // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
+    // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
+    sprintf(name, "C14%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
@@ -481,10 +481,10 @@ void generate_key_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uin
     sprintf(name, "C44%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
-  else if (num_blocks == NR_BLOCKS_2k && uid_len == 4)
-    sprintf(name, "P24%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
-  else if (num_blocks == NR_BLOCKS_2k && uid_len == 7)
-    sprintf(name, "P27%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
+  else if (num_blocks == NR_BLOCKS_2k)
+    // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
+    // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
+    sprintf(name, "C14%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
@@ -615,7 +615,7 @@ bool read_mfc()
 
   // Test if a compatible MIFARE tag is used
   if (((t.nt.nti.nai.btSak & 0x08) == 0) && (t.nt.nti.nai.btSak != 0x01)) {
-    printf("Only MIFARE Classic tags are supported");
+    printf("Only MIFARE Classic tags are supported\n");
     return false;
   }
 
@@ -965,6 +965,15 @@ read_tag:
     else
       last_read_mfc_type = MFC_TYPE_C47;
   }
+  // Treat all MIFARE Plus 2K as 1K4B
+  if (t.num_blocks == NR_BLOCKS_2k) {
+    t.num_blocks = NR_BLOCKS_1k;
+    last_read_mfc_type = MFC_TYPE_C14;
+    if (t.nt.nti.nai.szUidLen == 7) {
+      // We need to fix the BCC to prevent bricking the tag if the original tag has a 7-Byte UID
+      mtDump.amb[0].mbd.abtData[4] = mtDump.amb[0].mbd.abtData[0] ^ mtDump.amb[0].mbd.abtData[1] ^ mtDump.amb[0].mbd.abtData[2] ^ mtDump.amb[0].mbd.abtData[3];
+    }
+  }
   memcpy(last_read_uid, t.nt.nti.nai.abtUid, 7);
 
   if (!(pfDump = fopen(file_name, "wb"))) {
@@ -972,7 +981,7 @@ read_tag:
     return false;
   }
 
-  // Finally save all keys + data to file
+  // Finally save all data to file
   if (pfDump) {
     uint16_t dump_size = (t.num_blocks + 1) * 16;
     if (fwrite(&mtDump, 1, dump_size, pfDump) != dump_size) {
