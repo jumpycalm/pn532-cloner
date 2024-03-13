@@ -455,36 +455,32 @@ void reset_mfc_buffer(void)
 
 void generate_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
 {
-  if (num_blocks == NR_BLOCKS_1k && uid_len == 4)
+  // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
+  // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
+  if ((num_blocks == NR_BLOCKS_1k || num_blocks == NR_BLOCKS_2k) && uid_len == 4)
     sprintf(name, "C14%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
-  else if (num_blocks == NR_BLOCKS_1k && uid_len == 7)
+  else if ((num_blocks == NR_BLOCKS_1k || num_blocks == NR_BLOCKS_2k) && uid_len == 7)
     sprintf(name, "C17%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
   if (num_blocks == NR_BLOCKS_4k && uid_len == 4)
     sprintf(name, "C44%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
-  else if (num_blocks == NR_BLOCKS_2k)
-    // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
-    // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
-    sprintf(name, "C14%02x%02x%02x%02x.bin", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
 
 void generate_key_file_name(char *name, uint8_t num_blocks, uint8_t uid_len, uint8_t *uid)
 {
-  if (num_blocks == NR_BLOCKS_1k && uid_len == 4)
+  // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
+  // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
+  if ((num_blocks == NR_BLOCKS_1k || num_blocks == NR_BLOCKS_2k) && uid_len == 4)
     sprintf(name, "C14%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
-  else if (num_blocks == NR_BLOCKS_1k && uid_len == 7)
+  else if ((num_blocks == NR_BLOCKS_1k || num_blocks == NR_BLOCKS_2k) && uid_len == 7)
     sprintf(name, "C17%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
   if (num_blocks == NR_BLOCKS_4k && uid_len == 4)
     sprintf(name, "C44%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else if (num_blocks == NR_BLOCKS_4k && uid_len == 7)
     sprintf(name, "C47%02x%02x%02x%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
-  else if (num_blocks == NR_BLOCKS_2k)
-    // We treat MIFARE Plus 2K 4-Byte or MIFARE Plus 2K 7-Byte as 1K4B tag
-    // Because it seems that Dormakaba M+2K and Dormakaba M+2K7 are the only MIFARE Plus tags that use legacy authentication
-    sprintf(name, "C14%02x%02x%02x%02x.key", uid[0], uid[1], uid[2], uid[3]);
   else
     name = NULL;
 }
@@ -954,26 +950,19 @@ read_tag:
   printf("\n");
 
   // Save the information to global buffer in order to feed into the write function
+  // Treat all MIFARE Plus 2K as 1K
   if (t.nt.nti.nai.szUidLen == 4) {
-    if (t.num_blocks == NR_BLOCKS_1k)
+    if (t.num_blocks == NR_BLOCKS_1k || t.num_blocks == NR_BLOCKS_2k)
       last_read_mfc_type = MFC_TYPE_C14;
     else
       last_read_mfc_type = MFC_TYPE_C44;
   } else {
-    if (t.num_blocks == NR_BLOCKS_1k)
+    if (t.num_blocks == NR_BLOCKS_1k || t.num_blocks == NR_BLOCKS_2k)
       last_read_mfc_type = MFC_TYPE_C17;
     else
       last_read_mfc_type = MFC_TYPE_C47;
   }
-  // Treat all MIFARE Plus 2K as 1K4B
-  if (t.num_blocks == NR_BLOCKS_2k) {
-    t.num_blocks = NR_BLOCKS_1k;
-    last_read_mfc_type = MFC_TYPE_C14;
-    if (t.nt.nti.nai.szUidLen == 7) {
-      // We need to fix the BCC to prevent bricking the tag if the original tag has a 7-Byte UID
-      mtDump.amb[0].mbd.abtData[4] = mtDump.amb[0].mbd.abtData[0] ^ mtDump.amb[0].mbd.abtData[1] ^ mtDump.amb[0].mbd.abtData[2] ^ mtDump.amb[0].mbd.abtData[3];
-    }
-  }
+
   memcpy(last_read_uid, t.nt.nti.nai.abtUid, 7);
 
   if (!(pfDump = fopen(file_name, "wb"))) {
